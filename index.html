@@ -233,7 +233,7 @@ var EXIT_BUFFER_M  = 5;      // alert when this far outside the cell edge
 var EXIT_FIXES     = 3;      // ...for this many fixes in a row
 var MAX_ACCURACY_M = 25;     // poorer fixes never trigger the alert
 var TRACK_EVERY_S  = 2;
-var ALERT_REPEAT_S = 3;
+var ALERT_REPEAT_S = 5;
 var PHOTO_MAX_PX   = 1600;
 var SHOTS = [['top', 'מלמעלה'], ['under', 'מלמטה'], ['habitat', 'בית הגידול']];
 var COUNTS = [['1', 1], ['2-5', 3], ['6-10', 8], ['עשרות', 20]];
@@ -545,14 +545,23 @@ function distOutside(lat, lon, pts) {   // metres from the cell edge (0 inside)
   }
   return best;
 }
-function beep(freq, ms, times) {
+// soft chimes: a bell-like note (soft attack, long fade) instead of a hard beep
+function chime(notes, gap) {
   if (!audio) return;
-  for (var i = 0; i < times; i++) {
-    var o = audio.createOscillator(), g = audio.createGain(), t0 = audio.currentTime + i * (ms + 120) / 1000;
-    o.frequency.value = freq; o.connect(g); g.connect(audio.destination); g.gain.setValueAtTime(0.6, t0);
-    o.start(t0); o.stop(t0 + ms / 1000);
-  }
+  notes.forEach(function (f, i) {
+    var t0 = audio.currentTime + i * (gap || 0.22);
+    [1, 2].forEach(function (h) {   // the note and a quiet octave give a bell colour
+      var o = audio.createOscillator(), g = audio.createGain();
+      o.type = 'sine'; o.frequency.value = f * h; o.connect(g); g.connect(audio.destination);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(h === 1 ? 0.28 : 0.06, t0 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.9);
+      o.start(t0); o.stop(t0 + 0.95);
+    });
+  });
 }
+var SOUND = { start:[523, 659], exit:[659, 523], offer:[587, 784], end:[523, 659, 784, 1047], shutter:[1047] };
+function beep(kind) { chime(SOUND[kind], kind === 'shutter' ? 0.1 : 0.25); }
 function buzz(p) { try { if (navigator.vibrate) navigator.vibrate(p); } catch (e) {} }
 function keepAwake() {
   if ('wakeLock' in navigator) navigator.wakeLock.request('screen').then(function (w) { wakeLock = w; }).catch(function () {});
@@ -561,7 +570,7 @@ document.addEventListener('visibilitychange', function () { if (running && docum
 
 $('btnStart').onclick = function () {
   audio = audio || new (window.AudioContext || window.webkitAudioContext)(); audio.resume();
-  beep(660, 120, 1); keepAwake();
+  beep('start'); keepAwake();
   visit.visit_id = uid(); visit.start = Date.now(); endTime = visit.start + SEARCH_MINUTES * 60000;
   outsideRun = 0; isOutside = false; lastTrackT = 0; running = true; offered = {};
   $('earlyBox').classList.add('hidden');
@@ -586,7 +595,7 @@ fixListeners.push(function (f) {
   if (f.acc <= MAX_ACCURACY_M) outsideRun = d > EXIT_BUFFER_M ? outsideRun + 1 : 0;
   isOutside = outsideRun >= EXIT_FIXES;
   $('exitAlert').style.display = isOutside ? 'block' : 'none';
-  if (isOutside && Date.now() - lastAlertT >= ALERT_REPEAT_S * 1000) { lastAlertT = Date.now(); beep(880, 180, 2); buzz([300, 150, 300]); }
+  if (isOutside && Date.now() - lastAlertT >= ALERT_REPEAT_S * 1000) { lastAlertT = Date.now(); beep('exit'); buzz([200, 120, 200]); }
   $('searchStatus').textContent = 'דיוק GPS ' + Math.round(f.acc) + ' מ\' · ' + (d === 0 ? 'בתוך התא' : Math.round(d) + ' מ\' מחוץ לתא');
   if (f.t - lastTrackT >= TRACK_EVERY_S * 1000) {
     lastTrackT = f.t;
@@ -607,7 +616,7 @@ function offerEarlyEnd() {
     if (offered[i] || mins < r.min || fungiFound() > r.max) return;
     offered[i] = true;
     $('earlyMsg').textContent = r.msg; $('earlyBox').classList.remove('hidden');
-    beep(700, 250, 2); buzz([400, 200, 400]);
+    beep('offer'); buzz([250]);
   });
 }
 $('btnEarlyEnd').onclick = function () { $('earlyBox').classList.add('hidden'); visit.early_end = 1; endSearch(false); };
@@ -618,7 +627,7 @@ function endSearch(timeUp) {
   running = false; clearInterval(tick);
   if (wakeLock) { wakeLock.release().catch(function () {}); wakeLock = null; }
   $('exitAlert').style.display = 'none';
-  if (timeUp) { beep(520, 500, 3); buzz([600, 200, 600, 200, 600]); }
+  if (timeUp) { beep('end'); buzz([300, 150, 300]); }
   visit.end = Date.now();
   saveDraft();
   showEnd(timeUp);
@@ -725,7 +734,7 @@ function shrink(source, w, h) {
 }
 $('btnShutter').onclick = function () {
   var v = $('camVideo'); if (!v.videoWidth) return;
-  stampFirstShot(); beep(1200, 40, 1);
+  stampFirstShot(); beep('shutter');
   storeShot(shrink(v, v.videoWidth, v.videoHeight));
 };
 $('btnCamClose').onclick = closeCamera;
