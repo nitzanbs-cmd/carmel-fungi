@@ -595,9 +595,10 @@ fixListeners.push(function (f) {
     if (visit.track.length % 15 === 0) saveDraft();
   }
 });
-// offer to stop early when little is found (her rule): nothing after 15 min, 3 fungi or fewer after 17 min
-var EARLY_RULES = [{ min:15, max:0, msg:'15 דקות בלי פטריות. לסיים את התא?' },
-                   { min:17, max:3, msg:'17 דקות ועד 3 פטריות. לסיים את התא?' }];
+// offer to stop early, same proportions as the plot protocol (30 min -> 20 if nothing, 25 if fewer than 5):
+// nothing after 13 of 20 min, fewer than 5 fungi after 17 of 20 min
+var EARLY_RULES = [{ min:13, max:0, msg:'13 דקות בלי פטריות. לסיים את התא?' },
+                   { min:17, max:4, msg:'17 דקות ופחות מ-5 פטריות. לסיים את התא?' }];
 var offered = {};
 function fungiFound() { return visit.observations.reduce(function (s, o) { return s + (Number(o.count) || 0); }, 0); }
 function offerEarlyEnd() {
