@@ -474,7 +474,7 @@ function drawKit() {
                    '<button class="small" data-go="' + i + '">הגעתי</button>') + '</div>';
   });
   var allDone = kit.cells.every(function (c) { return visitedIds[c.id] || c.done; });
-  if (allDone) html += '<p style="margin-top:10px">סיימת את כל 5 התאים. תודה!</p><button id="btnDraw">ערכה חדשה</button>';
+  if (allDone) html += '<p style="margin-top:10px">סיימת את כל 3 התאים. תודה!</p><button id="btnDraw">ערכה חדשה</button>';
   sheet.innerHTML = html;
   if (allDone) $('btnDraw').onclick = showChoice;
   sheet.querySelectorAll('[data-go]').forEach(function (b) { b.onclick = function () { arrive(kit.cells[Number(b.dataset.go)], Number(b.dataset.go) + 1); }; });
@@ -823,10 +823,10 @@ function showChoice() {
   $('homeSheet').innerHTML =
     '<h2 style="margin-bottom:6px">איפה מחפשים?</h2>' +
     (open ? '<p class="muted">הערכה הפתוחה שלך תוחלף.</p>' : '') +
-    '<div class="card"><b>ניטור ביער חוף הכרמל</b><p class="muted" style="margin:4px 0 0">חלק מהמחקר: 5 תאים מוגרלים ביער</p>' +
-    '<button id="btnCarmel">הגרלת 5 תאים בחוף הכרמל</button></div>' +
-    '<div class="card"><b>נסו את מזלכם קרוב אליכם</b><p class="muted" style="margin:4px 0 0">5 תאים מוגרלים סביב המיקום שלך, עד ' + NEAR_KM + ' ק"מ ממך</p>' +
-    '<button id="btnNear">הגרלת 5 תאים לידי</button></div>' +
+    '<div class="card"><b>ניטור ביער חוף הכרמל</b><p class="muted" style="margin:4px 0 0">חלק מהמחקר: 3 תאים מוגרלים ביער</p>' +
+    '<button id="btnCarmel">הגרלת 3 תאים בחוף הכרמל</button></div>' +
+    '<div class="card"><b>נסו את מזלכם קרוב אליכם</b><p class="muted" style="margin:4px 0 0">3 תאים מוגרלים סביב המיקום שלך, עד ' + NEAR_KM + ' ק"מ ממך</p>' +
+    '<button id="btnNear">הגרלת 3 תאים לידי</button></div>' +
     (open ? '<button class="second" id="btnChoiceBack">חזרה לערכה הפתוחה</button>' : '');
   $('btnCarmel').onclick = function () { newKit(); };
   $('btnNear').onclick = nearKit;
@@ -835,7 +835,7 @@ function showChoice() {
 function nearKit() {
   if (!lastFix) { toast('מחכה למיקום GPS... לחצו על ◎ במפה'); return; }
   api('testKit', { lat:lastFix.lat, lon:lastFix.lon, km:NEAR_KM }).then(function (r) {
-    kit = r; store('kit', r); visitedIds = {}; store('visitedIds', visitedIds); drawKit(); toast(r.checked ? 'נוצרו 5 תאים בשטח פתוח לידך' : 'נוצרו 5 תאים לידך. המפה לא נבדקה הפעם, ותא שנופל על שטח בנוי או כביש מחליפים', 6000);
+    kit = r; store('kit', r); visitedIds = {}; store('visitedIds', visitedIds); drawKit(); toast(r.checked ? 'נוצרו 3 תאים בשטח פתוח לידך' : 'נוצרו 3 תאים לידך. המפה לא נבדקה הפעם, ותא שנופל על שטח בנוי או כביש מחליפים', 6000);
   }).catch(function (e) { toast(errText(e)); });
 }
 $('mTestKit').onclick = function () { $('menu').classList.add('hidden'); showChoice(); };
@@ -909,7 +909,7 @@ var Mock = (function () {
   function kitOf(email) {
     var byId = {}; cells.forEach(function (c) { byId[c.id] = c; });
     var k = S.kits.filter(function (k) { return k.email === email && (k.status === 'active' || k.status === 'visited'); });
-    if (!k.some(function (x) { return x.status === 'active'; }) && k.length < 5) k = [];
+    if (!k.some(function (x) { return x.status === 'active'; }) && k.length < 3) k = [];
     return { ok:true, kit_no:k.length ? 1 : null, cells:k.map(function (x) { var c = pub(byId[x.cell_id]); c.done = x.status === 'visited'; return c; }) };
   }
   function auth(b) { var u = S.users[b.email]; if (!u || u.token !== b.token) throw new Error('signed_out'); return u; }
@@ -924,7 +924,7 @@ var Mock = (function () {
     drawKit:function (b) { auth(b);
       S.kits.forEach(function (k) { if (k.email === b.email && (k.status === 'visited' || k.status === 'active')) k.status = 'closed'; });
       var seed = cells[Math.floor(Math.random() * cells.length)], pick = [];
-      ['hot', 'hot', 'middle', 'cold', 'cold'].forEach(function (lv) {
+      ['hot', 'middle', 'cold'].forEach(function (lv) {
         var c = cells.filter(function (c) { return c.level === lv && pick.indexOf(c) < 0; })
           .sort(function (a, z) { return Math.hypot(a.x - seed.x, a.y - seed.y) - Math.hypot(z.x - seed.x, z.y - seed.y); })[0];
         pick.push(c);
@@ -956,7 +956,7 @@ var Mock = (function () {
                    n_visits:S.visits.filter(function (v) { return v.email === e; }).length, n_obs:S.obs.filter(function (o) { return o.email === e; }).length }; }) }; },
     testKit:function (b) { auth(b);
       S.kits.forEach(function (k) { if (k.email === b.email && k.status === 'active') k.status = 'replaced'; });
-      ['hot', 'hot', 'middle', 'cold', 'cold'].forEach(function (lv, i) {
+      ['hot', 'middle', 'cold'].forEach(function (lv, i) {
         var a = i * 1.26, d = 150 + 30 * i, lat = b.lat + d * Math.sin(a) / 110574, lon = b.lon + d * Math.cos(a) / 93800;
         var h = 30 / 110574, w = 30 / 93800, id = 'T' + Date.now() + '_' + i;
         cells.push({ id:id, level:lv, x:lon * 93800, y:lat * 110574, center:[lat, lon], corners:[[lat - h, lon - w], [lat - h, lon + w], [lat + h, lon + w], [lat + h, lon - w]] });
