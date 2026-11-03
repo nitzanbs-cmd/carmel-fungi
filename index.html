@@ -352,7 +352,8 @@ function startGps() {
     lastFix = { lat:c.latitude, lon:c.longitude, acc:c.accuracy, t:Date.now() };
     fixListeners.forEach(function (f) { f(lastFix); });
   }, function (e) {
-    if (e.code === 1) toast('אין הרשאת מיקום. יש לאפשר מיקום בהגדרות הדפדפן', 6000);
+    if (e.code === 1) { navigator.geolocation.clearWatch(gpsWatch); gpsWatch = null;
+      toast('המיקום חסום. בכרום: ⋮ ← הגדרות ← הגדרות אתרים ← מיקום ← לאפשר לאתר הזה', 8000); }
   }, { enableHighAccuracy:true, maximumAge:0, timeout:20000 });
 }
 
@@ -373,8 +374,17 @@ function makeMap(id) {
     var b = L.DomUtil.create('button', 'locate'); b.innerHTML = '◎'; b.title = 'המיקום שלי';
     L.DomEvent.disableClickPropagation(b);
     b.onclick = function () {
-      if (!lastFix) { toast('מחכה למיקום GPS...'); startGps(); return; }
-      m.setView([lastFix.lat, lastFix.lon], Math.max(m.getZoom(), 17));
+      if (lastFix) { m.setView([lastFix.lat, lastFix.lon], Math.max(m.getZoom(), 17)); return; }
+      toast('מחפש מיקום...');
+      // a tap lets the browser ask for the permission again if it was missed
+      navigator.geolocation.getCurrentPosition(function (pos) {
+        var c = pos.coords; lastFix = { lat:c.latitude, lon:c.longitude, acc:c.accuracy, t:Date.now() };
+        fixListeners.forEach(function (f) { f(lastFix); });
+        m.setView([lastFix.lat, lastFix.lon], 17); startGps();
+      }, function (e) {
+        toast(e.code === 1 ? 'המיקום חסום. בכרום: ⋮ ← הגדרות ← הגדרות אתרים ← מיקום ← לאפשר לאתר הזה'
+                           : 'אין קליטת GPS כרגע. כדאי לצאת לשטח פתוח ולנסות שוב', 8000);
+      }, { enableHighAccuracy:true, timeout:20000, maximumAge:0 });
     };
     return b;
   } });
