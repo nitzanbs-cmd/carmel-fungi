@@ -429,12 +429,12 @@ $('chkConsent').onchange = function () { $('btnConsent').disabled = !this.checke
 $('btnConsent').onclick = function () {
   api('consent').then(function () {
     session.consent = true; store('session', session);
-    startGps(); goHome();
+    startGps(); goHome(true);
   }).catch(function (e) { toast(errText(e)); });
 };
 function afterLogin() {
   if (!session.consent) { show('sConsent'); return; }
-  startGps(); goHome();
+  startGps(); goHome(true);   // every opening starts with the choice
   api('me').then(function (r) { session.access = r.access; session.admin = r.admin; store('session', session);
     $('mAdmin').classList.toggle('hidden', !r.admin); }).catch(function () {});
 }
@@ -443,7 +443,9 @@ function afterLogin() {
 var kit = store('kit') || { cells:[] }, kitLayers = [];
 var visitedIds = store('visitedIds') || {};   // cells reported from this phone (also while still in the outbox)
 
-function goHome() {
+var choosing = false;   // the choice screen is shown instead of the kit
+function goHome(withChoice) {
+  choosing = !!withChoice;
   show('sHome');
   $('mAdmin').classList.toggle('hidden', !session.admin);
   $('mTestKit').classList.remove('hidden');
@@ -455,6 +457,7 @@ function loadKit() {
     .catch(function () { /* offline: keep the kit stored on the phone */ });
 }
 function drawKit() {
+  if (choosing) { showChoice(); return; }
   kitLayers.forEach(function (l) { homeMap.removeLayer(l); }); kitLayers = [];
   var sheet = $('homeSheet'), html = '';
   if (!kit.cells || !kit.cells.length) {
@@ -476,12 +479,13 @@ function drawKit() {
   var allDone = kit.cells.every(function (c) { return visitedIds[c.id] || c.done; });
   if (allDone) html += '<p style="margin-top:10px">סיימת את כל 3 התאים. תודה!</p><button id="btnDraw">ערכה חדשה</button>';
   sheet.innerHTML = html;
-  if (allDone) $('btnDraw').onclick = showChoice;
+  if (allDone) $('btnDraw').onclick = function () { choosing = true; showChoice(); };
   sheet.querySelectorAll('[data-go]').forEach(function (b) { b.onclick = function () { arrive(kit.cells[Number(b.dataset.go)], Number(b.dataset.go) + 1); }; });
   sheet.querySelectorAll('[data-rep]').forEach(function (b) { b.onclick = function () { replaceCell(b.dataset.rep); }; });
   if (bounds.isValid()) homeMap.fitBounds(bounds.pad(0.3));
 }
 function newKit() {
+  choosing = false;
   api('drawKit').then(function (r) { kit = r; store('kit', r); visitedIds = {}; store('visitedIds', visitedIds); drawKit(); })
     .catch(function (e) {
       if (e.message === 'kit_not_finished') { toast('חלק מהביקורים עדיין ממתינים לשליחה. שלחו אותם קודם'); return; }
@@ -822,23 +826,24 @@ function showChoice() {
   var open = kit.cells && kit.cells.some(function (c) { return !(visitedIds[c.id] || c.done); });
   $('homeSheet').innerHTML =
     '<h2 style="margin-bottom:6px">איפה מחפשים?</h2>' +
-    (open ? '<p class="muted">הערכה הפתוחה שלך תוחלף.</p>' : '') +
+    (open ? '<p class="muted">יש לך ערכה פתוחה: אפשר להמשיך בה (כפתור למטה), או לבחור חדשה במקומה.</p>' : '') +
     '<div class="card"><b>ניטור ביער חוף הכרמל</b><p class="muted" style="margin:4px 0 0">חלק מהמחקר: 3 תאים מוגרלים ביער</p>' +
     '<button id="btnCarmel">הגרלת 3 תאים בחוף הכרמל</button></div>' +
     '<div class="card"><b>נסו את מזלכם קרוב אליכם</b><p class="muted" style="margin:4px 0 0">3 תאים מוגרלים סביב המיקום שלך, עד ' + NEAR_KM + ' ק"מ ממך</p>' +
     '<button id="btnNear">הגרלת 3 תאים לידי</button></div>' +
-    (open ? '<button class="second" id="btnChoiceBack">חזרה לערכה הפתוחה</button>' : '');
+    (open ? '<button class="second" id="btnChoiceBack">המשך לערכה הפתוחה</button>' : '');
   $('btnCarmel').onclick = function () { newKit(); };
   $('btnNear').onclick = nearKit;
-  if ($('btnChoiceBack')) $('btnChoiceBack').onclick = drawKit;
+  if ($('btnChoiceBack')) $('btnChoiceBack').onclick = function () { choosing = false; drawKit(); };
 }
 function nearKit() {
+  choosing = false;
   if (!lastFix) { toast('מחכה למיקום GPS... לחצו על ◎ במפה'); return; }
   api('testKit', { lat:lastFix.lat, lon:lastFix.lon, km:NEAR_KM }).then(function (r) {
     kit = r; store('kit', r); visitedIds = {}; store('visitedIds', visitedIds); drawKit(); toast(r.checked ? 'נוצרו 3 תאים בשטח פתוח לידך' : 'נוצרו 3 תאים לידך. המפה לא נבדקה הפעם, ותא שנופל על שטח בנוי או כביש מחליפים', 6000);
   }).catch(function (e) { toast(errText(e)); });
 }
-$('mTestKit').onclick = function () { $('menu').classList.add('hidden'); showChoice(); };
+$('mTestKit').onclick = function () { $('menu').classList.add('hidden'); choosing = true; showChoice(); };
 document.querySelectorAll('.back').forEach(function (b) { b.onclick = goHome; });
 
 // ================= 9. admin =================
