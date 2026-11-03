@@ -816,8 +816,7 @@ function openHistory() {
 }
 $('mHistory').onclick = openHistory;
 // ================= choice of kit: Carmel research, or try your luck near you =================
-var NEAR_KM = [1, 3, 5, 10];
-var nearKm = store('nearKm') || 3;
+var NEAR_KM = 2;   // walking distance: about half an hour to the farthest cell
 function showChoice() {
   kitLayers.forEach(function (l) { homeMap.removeLayer(l); }); kitLayers = [];
   var open = kit.cells && kit.cells.some(function (c) { return !(visitedIds[c.id] || c.done); });
@@ -826,21 +825,16 @@ function showChoice() {
     (open ? '<p class="muted">הערכה הפתוחה שלך תוחלף.</p>' : '') +
     '<div class="card"><b>ניטור ביער חוף הכרמל</b><p class="muted" style="margin:4px 0 0">חלק מהמחקר: 5 תאים מוגרלים ביער</p>' +
     '<button id="btnCarmel">הגרלת 5 תאים בחוף הכרמל</button></div>' +
-    '<div class="card"><b>נסו את מזלכם קרוב אליכם</b><p class="muted" style="margin:4px 0 0">5 תאים מוגרלים סביב המיקום שלך, עד מרחק של:</p>' +
-    '<div class="chips">' + NEAR_KM.map(function (k) {
-      return '<button data-km="' + k + '" class="' + (k === nearKm ? 'on' : '') + '">' + k + ' ק"מ</button>'; }).join('') + '</div>' +
+    '<div class="card"><b>נסו את מזלכם קרוב אליכם</b><p class="muted" style="margin:4px 0 0">5 תאים מוגרלים סביב המיקום שלך, עד ' + NEAR_KM + ' ק"מ ממך</p>' +
     '<button id="btnNear">הגרלת 5 תאים לידי</button></div>' +
     (open ? '<button class="second" id="btnChoiceBack">חזרה לערכה הפתוחה</button>' : '');
   $('btnCarmel').onclick = function () { newKit(); };
   $('btnNear').onclick = nearKit;
-  $('homeSheet').querySelectorAll('[data-km]').forEach(function (b) {
-    b.onclick = function () { nearKm = Number(b.dataset.km); store('nearKm', nearKm); showChoice(); };
-  });
   if ($('btnChoiceBack')) $('btnChoiceBack').onclick = drawKit;
 }
 function nearKit() {
   if (!lastFix) { toast('מחכה למיקום GPS... לחצו על ◎ במפה'); return; }
-  api('testKit', { lat:lastFix.lat, lon:lastFix.lon, km:nearKm }).then(function (r) {
+  api('testKit', { lat:lastFix.lat, lon:lastFix.lon, km:NEAR_KM }).then(function (r) {
     kit = r; store('kit', r); visitedIds = {}; store('visitedIds', visitedIds); drawKit(); toast('נוצרו 5 תאים לידך');
   }).catch(function (e) { toast(errText(e)); });
 }
