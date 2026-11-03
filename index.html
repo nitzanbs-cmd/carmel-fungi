@@ -128,6 +128,7 @@
   <div id="menu" class="card hidden" style="position:absolute;top:52px;left:8px;z-index:2000;width:200px">
     <button class="second small" style="width:100%;margin:4px 0" id="mHistory">ההיסטוריה שלי</button>
     <button class="second small hidden" style="width:100%;margin:4px 0" id="mAdmin">לוח בקרה</button>
+    <button class="second small hidden" style="width:100%;margin:4px 0" id="mTestKit">ערכת ניסיון סביבי</button>
     <button class="second small" style="width:100%;margin:4px 0" id="mLogout">התנתקות</button>
   </div>
   <div id="homeMap" class="map"></div>
@@ -421,6 +422,7 @@ var visitedIds = store('visitedIds') || {};   // cells reported from this phone 
 function goHome() {
   show('sHome');
   $('mAdmin').classList.toggle('hidden', !session.admin);
+  $('mTestKit').classList.toggle('hidden', !session.admin);
   if (!homeMap) homeMap = makeMap('homeMap');
   refreshOutbox(); drawKit(); loadKit();
 }
@@ -791,6 +793,14 @@ function openHistory() {
   }).catch(function (e) { $('histList').innerHTML = '<p>' + errText(e) + '</p>'; });
 }
 $('mHistory').onclick = openHistory;
+$('mTestKit').onclick = function () {   // admin only: 5 test cells around where she stands
+  $('menu').classList.add('hidden');
+  if (!lastFix) { toast('מחכה למיקום GPS...'); return; }
+  if (!confirm('ליצור ערכת ניסיון של 5 תאים סביב המיקום שלך? הערכה הפתוחה תוחלף.')) return;
+  api('testKit', { lat:lastFix.lat, lon:lastFix.lon }).then(function (r) {
+    kit = r; store('kit', r); visitedIds = {}; store('visitedIds', visitedIds); drawKit(); toast('נוצרה ערכת ניסיון');
+  }).catch(function (e) { toast(errText(e)); });
+};
 document.querySelectorAll('.back').forEach(function (b) { b.onclick = goHome; });
 
 // ================= 9. admin =================
@@ -906,6 +916,15 @@ var Mock = (function () {
         users:Object.keys(S.users).map(function (e) { var u = S.users[e];
           return { email:e, no:/admin|nitzanbs/.test(e) ? 0 : u.no, status:u.status, access:u.access,
                    n_visits:S.visits.filter(function (v) { return v.email === e; }).length, n_obs:S.obs.filter(function (o) { return o.email === e; }).length }; }) }; },
+    testKit:function (b) { auth(b);
+      S.kits.forEach(function (k) { if (k.email === b.email && k.status === 'active') k.status = 'replaced'; });
+      ['hot', 'hot', 'middle', 'cold', 'cold'].forEach(function (lv, i) {
+        var a = i * 1.26, d = 150 + 30 * i, lat = b.lat + d * Math.sin(a) / 110574, lon = b.lon + d * Math.cos(a) / 93800;
+        var h = 30 / 110574, w = 30 / 93800, id = 'T' + Date.now() + '_' + i;
+        cells.push({ id:id, level:lv, x:lon * 93800, y:lat * 110574, center:[lat, lon], corners:[[lat - h, lon - w], [lat - h, lon + w], [lat + h, lon + w], [lat + h, lon - w]] });
+        S.kits.push({ email:b.email, kit_no:1, cell_id:id, level:lv, status:'active' });
+      });
+      return kitOf(b.email); },
     adminSetUser:function (b) { auth(b); var u = S.users[b.target]; if (b.status) { u.status = b.status; if (b.status !== 'approved') u.token = null; }
       if (b.access) u.access = b.access; return { ok:true }; }
   };
