@@ -53,6 +53,8 @@
   #exitAlert { display:none; background:var(--red); color:#fff; text-align:center; padding:12px; font-size:20px; font-weight:700; }
   .fab { position:absolute; left:16px; bottom:16px; z-index:1000; width:64px; height:64px; border-radius:50%;
          font-size:36px; line-height:1; padding:0; box-shadow:0 3px 10px rgba(0,0,0,.3); }
+  button.locate { width:48px; height:48px; padding:0; margin:0 0 6px; border-radius:50%; background:#fff;
+                  color:#1a73e8; font-size:28px; line-height:1; box-shadow:0 2px 8px rgba(0,0,0,.35); }
   .mapwrap { position:relative; flex:1; display:flex; }
   .mapwrap .map { flex:1; }
   .badge { background:#fff; color:var(--green); border-radius:12px; padding:2px 8px; font-size:13px; font-weight:700; }
@@ -366,6 +368,17 @@ function makeMap(id) {
   fixListeners.push(function (f) {
     m._me.setLatLng([f.lat, f.lon]).addTo(m); m._acc.setLatLng([f.lat, f.lon]).setRadius(f.acc).addTo(m);
   });
+  // button: back to my position
+  var Locate = L.Control.extend({ options:{ position:'bottomright' }, onAdd:function () {
+    var b = L.DomUtil.create('button', 'locate'); b.innerHTML = '◎'; b.title = 'המיקום שלי';
+    L.DomEvent.disableClickPropagation(b);
+    b.onclick = function () {
+      if (!lastFix) { toast('מחכה למיקום GPS...'); startGps(); return; }
+      m.setView([lastFix.lat, lastFix.lon], Math.max(m.getZoom(), 17));
+    };
+    return b;
+  } });
+  new Locate().addTo(m);
   return m;
 }
 function cellPolygon(c, style) { return L.polygon(c.corners, style); }
