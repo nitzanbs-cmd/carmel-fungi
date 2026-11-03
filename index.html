@@ -899,19 +899,23 @@ function renderAdmin() {
   var visits = adminData.visits.filter(function (v) { return !who || v.email === who; });
   drawVisits(adminMap, adminLayers, visits, function (v) { return colorOfEmail(v.email); }, true);
   var nObs = visits.reduce(function (s, v) { return s + v.observations.length; }, 0);
-  $('adminSummary').textContent = visits.length + ' ביקורים · ' + nObs + ' תצפיות · ' +
+  var nExp = adminData.users.filter(function (u) { return u.role === 'expert' && u.status === 'approved'; }).length;
+  $('adminSummary').textContent = visits.length + ' ביקורים · ' + nObs + ' תצפיות · ' + nExp + ' סוקרים מומחים · ' +
     adminData.users.filter(function (u) { return u.status === 'pending'; }).length + ' בקשות ממתינות';
   var st = { pending:'ממתין', approved:'מאושר', blocked:'חסום', removed:'הוסר' };
-  $('adminUsers').innerHTML = '<tr><th>מייל</th><th>ביקורים</th><th>מצב</th><th>רואה</th></tr>' + adminData.users.map(function (u) {
+  $('adminUsers').innerHTML = '<tr><th>מייל</th><th>ביקורים</th><th>מצב</th><th>תפקיד</th><th>רואה</th></tr>' + adminData.users.map(function (u) {
     var me = u.no === 0 || u.no === '0';
     return '<tr><td style="color:' + colorOfEmail(u.email) + '">' + esc(u.email) + '</td><td>' + u.n_visits + ' / ' + u.n_obs + '</td><td>' +
       (me ? 'מנהלת' : '<select data-s="' + esc(u.email) + '">' + ['pending', 'approved', 'blocked', 'removed'].map(function (s) {
         return '<option value="' + s + '"' + (u.status === s ? ' selected' : '') + (s === 'pending' ? ' disabled' : '') + '>' + st[s] + '</option>'; }).join('') + '</select>') +
+      '</td><td>' + (me ? 'סוקרת מומחית' : '<select data-r="' + esc(u.email) + '"><option value="citizen"' + (u.role !== 'expert' ? ' selected' : '') +
+      '>אזרח</option><option value="expert"' + (u.role === 'expert' ? ' selected' : '') + '>סוקר מומחה</option></select>') +
       '</td><td>' + (me ? 'הכול' : '<select data-a="' + esc(u.email) + '"><option value="own"' + (u.access === 'own' ? ' selected' : '') +
       '>רק שלו</option><option value="all"' + (u.access === 'all' ? ' selected' : '') + '>שלו ושל אחרים</option></select>') + '</td></tr>';
   }).join('');
   $('adminUsers').querySelectorAll('[data-s]').forEach(function (s) { s.onchange = function () { adminSet({ target:s.dataset.s, status:s.value }); }; });
   $('adminUsers').querySelectorAll('[data-a]').forEach(function (s) { s.onchange = function () { adminSet({ target:s.dataset.a, access:s.value }); }; });
+  $('adminUsers').querySelectorAll('[data-r]').forEach(function (s) { s.onchange = function () { adminSet({ target:s.dataset.r, role:s.value }); }; });
 }
 function adminSet(body) {
   api('adminSetUser', body).then(function () { toast('עודכן'); openAdmin(); }).catch(function (e) { toast(errText(e)); });
@@ -990,7 +994,7 @@ var Mock = (function () {
     adminData:function (b) { auth(b);
       return { ok:true, visits:visitsOf(function () { return true; }).map(function (v) { v.who = v.email; return v; }),
         users:Object.keys(S.users).map(function (e) { var u = S.users[e];
-          return { email:e, no:/admin|nitzanbs/.test(e) ? 0 : u.no, status:u.status, access:u.access,
+          return { email:e, no:/admin|nitzanbs/.test(e) ? 0 : u.no, status:u.status, access:u.access, role:u.role || (/nitzanbs/.test(e) ? 'expert' : 'citizen'),
                    n_visits:S.visits.filter(function (v) { return v.email === e; }).length, n_obs:S.obs.filter(function (o) { return o.email === e; }).length }; }) }; },
     testKit:function (b) { auth(b);
       S.kits.forEach(function (k) { if (k.email === b.email && k.status === 'active') k.status = 'replaced'; });
@@ -1002,7 +1006,7 @@ var Mock = (function () {
       });
       return kitOf(b.email); },
     adminSetUser:function (b) { auth(b); var u = S.users[b.target]; if (b.status) { u.status = b.status; if (b.status !== 'approved') u.token = null; }
-      if (b.access) u.access = b.access; return { ok:true }; }
+      if (b.access) u.access = b.access; if (b.role) u.role = b.role; return { ok:true }; }
   };
   function visitsOf(filter) {
     var byId = {}; cells.forEach(function (c) { byId[c.id] = c; });
