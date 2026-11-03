@@ -162,6 +162,8 @@
     <div id="timer">20:00</div>
     <div id="searchStatus"></div>
     <div class="muted" style="text-align:center" id="obsCount">0 תצפיות</div>
+    <div id="earlyBox" class="card hidden" style="margin-top:8px;text-align:center"><b id="earlyMsg"></b>
+      <div style="display:flex;gap:8px"><button id="btnEarlyEnd" style="flex:1">לסיים</button><button id="btnEarlyGo" class="second" style="flex:1">להמשיך לחפש</button></div></div>
     <button id="btnFinish" class="second">סיום החיפוש</button>
   </div>
 </section>
@@ -561,7 +563,8 @@ $('btnStart').onclick = function () {
   audio = audio || new (window.AudioContext || window.webkitAudioContext)(); audio.resume();
   beep(660, 120, 1); keepAwake();
   visit.visit_id = uid(); visit.start = Date.now(); endTime = visit.start + SEARCH_MINUTES * 60000;
-  outsideRun = 0; isOutside = false; lastTrackT = 0; running = true;
+  outsideRun = 0; isOutside = false; lastTrackT = 0; running = true; offered = {};
+  $('earlyBox').classList.add('hidden');
   show('sSearch');
   if (!searchMap) { searchMap = makeMap('searchMap'); trackLine = L.polyline([], { color:'#ff5252', weight:4 }).addTo(searchMap); }
   if (cellLayer) searchMap.removeLayer(cellLayer);
@@ -573,7 +576,7 @@ $('btnStart').onclick = function () {
   tick = setInterval(function () {
     var left = (endTime - Date.now()) / 1000;
     $('timer').textContent = fmt(left);
-    if (left <= 0) endSearch(true);
+    if (left <= 0) endSearch(true); else offerEarlyEnd();
   }, 250);
   saveDraft();
 };
@@ -592,6 +595,22 @@ fixListeners.push(function (f) {
     if (visit.track.length % 15 === 0) saveDraft();
   }
 });
+// offer to stop early when little is found (her rule): nothing after 15 min, 3 fungi or fewer after 17 min
+var EARLY_RULES = [{ min:15, max:0, msg:'15 דקות בלי פטריות. לסיים את התא?' },
+                   { min:17, max:3, msg:'17 דקות ועד 3 פטריות. לסיים את התא?' }];
+var offered = {};
+function fungiFound() { return visit.observations.reduce(function (s, o) { return s + (Number(o.count) || 0); }, 0); }
+function offerEarlyEnd() {
+  var mins = (Date.now() - visit.start) / 60000;
+  EARLY_RULES.forEach(function (r, i) {
+    if (offered[i] || mins < r.min || fungiFound() > r.max) return;
+    offered[i] = true;
+    $('earlyMsg').textContent = r.msg; $('earlyBox').classList.remove('hidden');
+    beep(700, 250, 2); buzz([400, 200, 400]);
+  });
+}
+$('btnEarlyEnd').onclick = function () { $('earlyBox').classList.add('hidden'); visit.early_end = 1; endSearch(false); };
+$('btnEarlyGo').onclick = function () { $('earlyBox').classList.add('hidden'); };
 $('btnFinish').onclick = function () { if (confirm('לסיים את החיפוש לפני הזמן?')) endSearch(false); };
 
 function endSearch(timeUp) {
