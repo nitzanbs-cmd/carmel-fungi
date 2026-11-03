@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
 <meta charset="utf-8">
@@ -7,7 +7,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>ניטור פטריות כרמל</title>
+<title>funGIS</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -84,7 +84,7 @@
 
 <!-- ============ 1. login ============ -->
 <section id="sLogin" class="screen hidden">
-  <header><h1>ניטור פטריות ביער חוף הכרמל</h1></header>
+  <header><h1>funGIS · מחפשים פטריות</h1></header>
   <div class="pad">
     <h2>כניסה</h2>
     <p>מקלידים מייל. משתתפים חדשים נכנסים אחרי אישור של צוות המחקר.</p>
@@ -258,7 +258,7 @@ function forget(k) { try { localStorage.removeItem(k); } catch (e) {} }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]; }); }
 var ERRORS = { wrong_code:'הקוד שגוי', code_expired:'עדיין לא נשלח קוד. לחצו שליחה', too_many_tries:'יותר מדי ניסיונות. לחצו על שליחת הקוד שוב',
                not_approved:'הבקשה עדיין לא אושרה', signed_out:'צריך להתחבר מחדש', blocked:'הגישה שלך הוגבלה',
-               bad_email:'המייל לא תקין', kit_not_finished:'יש עדיין תאים פתוחים בערכה', offline:'אין קליטה כרגע' };
+               bad_email:'המייל לא תקין', no_room_for_test_cell:'לא נמצא מספיק שטח פתוח לידך', no_location:'אין מיקום GPS', kit_not_finished:'יש עדיין תאים פתוחים בערכה', offline:'אין קליטה כרגע' };
 
 // ================= API (Google, or a local mock) =================
 var session = store('session') || null;   // {email, token, access, admin, consent}
@@ -835,7 +835,7 @@ function showChoice() {
 function nearKit() {
   if (!lastFix) { toast('מחכה למיקום GPS... לחצו על ◎ במפה'); return; }
   api('testKit', { lat:lastFix.lat, lon:lastFix.lon, km:NEAR_KM }).then(function (r) {
-    kit = r; store('kit', r); visitedIds = {}; store('visitedIds', visitedIds); drawKit(); toast('נוצרו 5 תאים לידך');
+    kit = r; store('kit', r); visitedIds = {}; store('visitedIds', visitedIds); drawKit(); toast(r.checked ? 'נוצרו 5 תאים בשטח פתוח לידך' : 'נוצרו 5 תאים לידך. המפה לא נבדקה הפעם, ותא שנופל על שטח בנוי או כביש מחליפים', 6000);
   }).catch(function (e) { toast(errText(e)); });
 }
 $('mTestKit').onclick = function () { $('menu').classList.add('hidden'); showChoice(); };
