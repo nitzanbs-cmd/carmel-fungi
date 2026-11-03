@@ -1,0 +1,929 @@
+﻿<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#2f6b3a">
+<link rel="manifest" href="manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>ניטור פטריות כרמל</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root { --green:#2f6b3a; --green2:#e6efe5; --red:#b3261e; --ink:#1d2a20; --muted:#5d6b60;
+          --paper:#f6f4ee; --card:#fff; --line:#d9d5c8; }
+  * { box-sizing:border-box; }
+  html, body { height:100%; margin:0; }
+  body { background:var(--paper); color:var(--ink); font-family:"Segoe UI", Arial, sans-serif; font-size:16px; }
+  .screen { position:fixed; inset:0; display:flex; flex-direction:column; }
+  .hidden { display:none !important; }
+  header { background:var(--green); color:#fff; padding:10px 16px; display:flex; align-items:center; gap:10px; }
+  header h1 { font-size:16px; margin:0; flex:1; }
+  header button { background:transparent; color:#fff; border:1px solid rgba(255,255,255,.6); border-radius:8px;
+                  padding:5px 10px; font-size:14px; width:auto; margin:0; }
+  .pad { padding:16px; overflow:auto; flex:1; }
+  .center { justify-content:center; }
+  h2 { font-size:22px; color:var(--green); margin:0 0 12px; }
+  p { line-height:1.55; margin:0 0 12px; }
+  .muted { color:var(--muted); font-size:14px; }
+  input[type=email], input[type=text], input[type=number], select {
+    width:100%; font-size:18px; padding:12px; border:1px solid var(--line); border-radius:10px; background:#fff; }
+  input.code { letter-spacing:6px; text-align:center; direction:ltr; }
+  button { width:100%; padding:14px; font-size:18px; font-weight:700; border:0; border-radius:10px;
+           background:var(--green); color:#fff; margin-top:10px; cursor:pointer; }
+  button.second { background:#fff; color:var(--green); border:2px solid var(--green); }
+  button.small { width:auto; padding:8px 12px; font-size:15px; margin:0; }
+  button.danger { background:var(--red); }
+  button:disabled { opacity:.45; }
+  label.check { display:flex; gap:10px; align-items:flex-start; margin:10px 0; line-height:1.5; }
+  label.check input { width:22px; height:22px; flex:none; margin-top:2px; }
+  .map { flex:1; min-height:200px; }
+  .sheet { background:var(--paper); border-top:1px solid var(--line); padding:12px 16px 16px; max-height:50%; overflow:auto; }
+  .cellrow { display:flex; align-items:center; gap:8px; padding:10px 0; border-bottom:1px solid var(--line); }
+  .cellrow .num { width:30px; height:30px; border-radius:50%; background:var(--green); color:#fff;
+                  display:flex; align-items:center; justify-content:center; font-weight:700; flex:none; }
+  .cellrow .grow { flex:1; }
+  .cellrow a { color:var(--green); font-size:15px; }
+  .rate { display:flex; gap:8px; margin:12px 0; direction:ltr; }
+  .rate button { margin:0; font-size:24px; padding:16px 0; background:#fff; color:var(--green); border:2px solid var(--green); }
+  .rate button.on { background:var(--green); color:#fff; }
+  #timer { font-size:44px; font-weight:700; text-align:center; font-variant-numeric:tabular-nums; direction:ltr; line-height:1.1; }
+  #searchStatus { text-align:center; font-size:14px; color:var(--muted); min-height:20px; }
+  #exitAlert { display:none; background:var(--red); color:#fff; text-align:center; padding:12px; font-size:20px; font-weight:700; }
+  .fab { position:absolute; left:16px; bottom:16px; z-index:1000; width:64px; height:64px; border-radius:50%;
+         font-size:36px; line-height:1; padding:0; box-shadow:0 3px 10px rgba(0,0,0,.3); }
+  .mapwrap { position:relative; flex:1; display:flex; }
+  .mapwrap .map { flex:1; }
+  .badge { background:#fff; color:var(--green); border-radius:12px; padding:2px 8px; font-size:13px; font-weight:700; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:10px; }
+  .card .thumbs { display:flex; gap:6px; margin-top:8px; }
+  .card .thumbs img { width:31%; aspect-ratio:1; object-fit:cover; border-radius:8px; background:#ddd; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
+  .chips button { width:auto; margin:0; padding:8px 14px; font-size:16px; background:#fff; color:var(--green); border:2px solid var(--green); }
+  .chips button.on { background:var(--green); color:#fff; }
+  #camera { position:fixed; inset:0; background:#000; z-index:3000; display:flex; flex-direction:column; }
+  #camera video { flex:1; width:100%; object-fit:cover; min-height:0; }
+  #camera .bar { padding:12px 16px 20px; color:#fff; text-align:center; }
+  #camera .shutter { width:76px; height:76px; border-radius:50%; background:#fff; border:5px solid #9bbf9f; margin:8px auto 0; padding:0; }
+  #toast { position:fixed; left:16px; right:16px; bottom:24px; z-index:5000; background:#222; color:#fff;
+           padding:12px 16px; border-radius:10px; text-align:center; display:none; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  td, th { padding:6px 4px; border-bottom:1px solid var(--line); text-align:right; vertical-align:middle; }
+  td select { font-size:14px; padding:4px; }
+  .viewer { position:fixed; inset:0; z-index:4000; background:rgba(0,0,0,.85); display:flex; flex-direction:column;
+            align-items:center; justify-content:center; padding:16px; }
+  .viewer img { max-width:100%; max-height:70vh; border-radius:8px; }
+  .viewer .cap { color:#fff; margin:10px 0; text-align:center; }
+</style>
+</head>
+<body>
+
+<!-- ============ 1. login ============ -->
+<section id="sLogin" class="screen hidden">
+  <header><h1>ניטור פטריות ביער חוף הכרמל</h1></header>
+  <div class="pad">
+    <h2>כניסה</h2>
+    <p>מקלידים מייל. משתתפים חדשים נכנסים אחרי אישור של צוות המחקר.</p>
+    <input type="email" id="loginEmail" placeholder="המייל שלך" autocomplete="email" inputmode="email">
+    <button id="btnRequest">שליחה</button>
+    <div id="loginPending" class="card hidden" style="margin-top:14px">
+      הבקשה נשלחה. כשהיא תאושר יגיע אליך מייל עם קוד כניסה.
+    </div>
+    <div id="loginCodeBox" class="hidden" style="margin-top:14px">
+      <p>הקלידו את הקוד בן 6 הספרות שהגיע במייל:</p>
+      <input type="text" id="loginCode" class="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code">
+      <button id="btnVerify">כניסה</button>
+      <button id="btnResend" class="second">שליחת קוד חדש</button>
+    </div>
+    <p class="muted" id="loginMsg" style="margin-top:12px"></p>
+  </div>
+</section>
+
+<!-- ============ 2. consent + location ============ -->
+<section id="sConsent" class="screen hidden">
+  <header><h1>לפני שיוצאים</h1></header>
+  <div class="pad">
+    <h2>הסכמה להשתתפות</h2>
+    <div class="card">
+      <p>זהו ניטור של פטריות ביער חוף הכרמל, במסגרת מחקר של ניצן בר שמואל.</p>
+      <p><b>מה נאסף:</b> המייל שלך, דירוג המקום, התצפיות והתמונות שצילמת, ומסלול ההליכה בזמן החיפוש בתא בלבד (מרגע "התחלתי" ועד הסוף).</p>
+      <p><b>מה לא נאסף:</b> מיקום מחוץ לזמן החיפוש, אנשי קשר או כל מידע אחר מהטלפון.</p>
+      <p><b>למה:</b> לבדוק איפה ביער יש יותר פטריות. המייל שלך גלוי לצוות המחקר בלבד.</p>
+      <p><b>בטיחות:</b> היציאה ליער היא על אחריותך. הולכים בזהירות, לא קוטפים ולא טועמים פטריות, ולא נכנסים לשטח סגור.</p>
+    </div>
+    <label class="check"><input type="checkbox" id="chkConsent"> קראתי, אני בן/בת 18 ומעלה ומסכים/ה להשתתף.</label>
+    <button id="btnConsent" disabled>אישור מיקום והמשך</button>
+    <p class="muted">הטלפון ישאל אם לאפשר מיקום. בוחרים "בזמן השימוש באפליקציה".</p>
+  </div>
+</section>
+
+<!-- ============ 3. home: my kit ============ -->
+<section id="sHome" class="screen hidden">
+  <header>
+    <h1>התאים שלי</h1>
+    <button id="btnOutbox" class="hidden">ממתינים לשליחה <span class="badge" id="outboxCount">0</span></button>
+    <button id="btnMenu">☰</button>
+  </header>
+  <div id="menu" class="card hidden" style="position:absolute;top:52px;left:8px;z-index:2000;width:200px">
+    <button class="second small" style="width:100%;margin:4px 0" id="mHistory">ההיסטוריה שלי</button>
+    <button class="second small hidden" style="width:100%;margin:4px 0" id="mAdmin">לוח בקרה</button>
+    <button class="second small" style="width:100%;margin:4px 0" id="mLogout">התנתקות</button>
+  </div>
+  <div id="homeMap" class="map"></div>
+  <div class="sheet" id="homeSheet"></div>
+</section>
+
+<!-- ============ 4. arrival: quality ============ -->
+<section id="sArrive" class="screen hidden">
+  <header><h1 id="arriveTitle">הגעתי לתא</h1><button id="btnArriveBack">חזרה</button></header>
+  <div class="pad">
+    <h2>לפני שמתחילים לחפש</h2>
+    <p>במבט ראשון, עד כמה המקום נראה לך טוב לפטריות?</p>
+    <div class="rate" id="rate"></div>
+    <p class="muted" style="display:flex;justify-content:space-between"><span>5 = מצוין</span><span>1 = גרוע</span></p>
+    <p>בלחיצה על "התחלתי" מתחיל טיימר של <b id="minutesTxt">20</b> דקות. אפשר לחפש בכל התא, ונשמע צליל אם יוצאים ממנו.</p>
+    <button id="btnStart" disabled>התחלתי לחפש</button>
+  </div>
+</section>
+
+<!-- ============ 5. search ============ -->
+<section id="sSearch" class="screen hidden">
+  <div id="exitAlert">יצאת מהתא. חזרו פנימה</div>
+  <div class="mapwrap">
+    <div id="searchMap" class="map"></div>
+    <button class="fab" id="btnPlus" aria-label="תצפית חדשה">+</button>
+  </div>
+  <div class="sheet">
+    <div id="timer">20:00</div>
+    <div id="searchStatus"></div>
+    <div class="muted" style="text-align:center" id="obsCount">0 תצפיות</div>
+    <button id="btnFinish" class="second">סיום החיפוש</button>
+  </div>
+</section>
+
+<!-- ============ 6. observation form ============ -->
+<section id="sObs" class="screen hidden">
+  <header><h1>תצפית חדשה</h1><button id="btnObsCancel">ביטול</button></header>
+  <div class="pad" style="display:flex;flex-direction:column">
+    <div class="muted" id="stepNo" style="text-align:center"></div>
+    <h2 id="stepTitle" style="text-align:center;margin-top:8px"></h2>
+    <div id="stepBody" style="flex:1"></div>
+    <div style="display:flex;gap:10px">
+      <button id="btnStepBack" class="second" style="flex:1;font-size:26px" aria-label="אחורה">→</button>
+      <button id="btnStepOk" style="flex:2;font-size:26px" aria-label="קדימה">←</button>
+    </div>
+    <p class="muted" style="text-align:center">הטיימר והמסלול ממשיכים לרוץ</p>
+  </div>
+</section>
+
+<!-- ============ 7. end of visit ============ -->
+<section id="sEnd" class="screen hidden">
+  <header><h1>סיכום התא</h1></header>
+  <div class="pad">
+    <p id="endMsg"></p>
+    <div id="endCards"></div>
+    <label class="check hidden" id="nothingBox"><input type="checkbox" id="chkNothing"> חיפשתי ולא ראיתי אף פטרייה בתא.</label>
+    <button id="btnSendNow" disabled>לשלוח עכשיו</button>
+    <button id="btnSendLater" class="second" disabled>לשלוח אחר כך</button>
+  </div>
+</section>
+
+<!-- ============ 8. history ============ -->
+<section id="sHistory" class="screen hidden">
+  <header><h1>ההיסטוריה שלי</h1><button class="back">חזרה</button></header>
+  <div id="histMap" class="map" style="flex:1"></div>
+  <div class="sheet" id="histList"></div>
+</section>
+
+<!-- ============ 9. admin ============ -->
+<section id="sAdmin" class="screen hidden">
+  <header><h1>לוח בקרה</h1><button id="btnAdminReload">רענון</button><button class="back">חזרה</button></header>
+  <div id="adminMap" class="map" style="flex:1"></div>
+  <div class="sheet" style="max-height:55%">
+    <select id="adminWho"></select>
+    <div id="adminSummary" class="muted" style="margin:8px 0"></div>
+    <table id="adminUsers"></table>
+  </div>
+</section>
+
+<div id="camera" class="hidden">
+  <video id="camVideo" autoplay playsinline muted></video>
+  <div class="bar">
+    <div id="camLabel">מלמעלה</div>
+    <button class="shutter" id="btnShutter" aria-label="צילום"></button>
+    <button class="second small" style="margin-top:10px" id="btnCamClose">סגירה</button>
+  </div>
+</div>
+<input type="file" id="fileFallback" accept="image/*" capture="environment" class="hidden">
+<div id="toast"></div>
+
+<script>
+// ================= settings =================
+// Paste the web-app URL of the Google deployment here (Deploy -> New deployment -> Web app).
+var API_URL = 'https://script.google.com/macros/s/AKfycbzzFk6FTTyXC9qdofzwRHXVR7Nurpo4KFDFzwyqEgIkvxx4YBAEvbSng9YqA9k7pYAx/exec';
+var SEARCH_MINUTES = 20;
+var EXIT_BUFFER_M  = 5;      // alert when this far outside the cell edge
+var EXIT_FIXES     = 3;      // ...for this many fixes in a row
+var MAX_ACCURACY_M = 25;     // poorer fixes never trigger the alert
+var TRACK_EVERY_S  = 2;
+var ALERT_REPEAT_S = 3;
+var PHOTO_MAX_PX   = 1600;
+var SHOTS = [['top', 'מלמעלה'], ['under', 'מלמטה'], ['habitat', 'בית הגידול']];
+var COUNTS = [['1', 1], ['2-5', 3], ['6-10', 8], ['עשרות', 20]];
+var TAXA = [['', 'לא יודע/ת'], ['species', 'מין'], ['genus', 'סוג'], ['family', 'משפחה']];
+var HEB_LABELS = 'אבגדהוזחטיכלמנסעפצקרשת';
+
+var MOCK = /[?&]mock=1/.test(location.search) || !API_URL;   // local test without Google
+
+// ================= small helpers =================
+var $ = function (id) { return document.getElementById(id); };
+function show(id) {
+  document.querySelectorAll('.screen').forEach(function (s) { s.classList.add('hidden'); });
+  $(id).classList.remove('hidden');
+  setTimeout(function () { [homeMap, searchMap, histMap, adminMap].forEach(function (m) { if (m) m.invalidateSize(); }); }, 50);
+}
+function toast(msg, ms) {
+  var t = $('toast'); t.textContent = msg; t.style.display = 'block';
+  clearTimeout(toast._t); toast._t = setTimeout(function () { t.style.display = 'none'; }, ms || 3000);
+}
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+function fmt(s) { s = Math.max(0, Math.ceil(s)); return Math.floor(s / 60) + ':' + ('0' + s % 60).slice(-2); }
+function store(k, v) { try { if (v === undefined) return JSON.parse(localStorage.getItem(k)); localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; } }
+function forget(k) { try { localStorage.removeItem(k); } catch (e) {} }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]; }); }
+var ERRORS = { wrong_code:'הקוד שגוי', code_expired:'הקוד פג תוקף. בקשו קוד חדש', too_many_tries:'יותר מדי ניסיונות. בקשו קוד חדש',
+               not_approved:'הבקשה עדיין לא אושרה', signed_out:'צריך להתחבר מחדש', blocked:'הגישה שלך הוגבלה',
+               bad_email:'המייל לא תקין', kit_not_finished:'יש עדיין תאים פתוחים בערכה', offline:'אין קליטה כרגע' };
+
+// ================= API (Google, or a local mock) =================
+var session = store('session') || null;   // {email, token, access, admin, consent}
+
+function api(action, body) {
+  body = body || {}; body.action = action;
+  if (session) { body.email = body.email || session.email; body.token = session.token; }
+  if (MOCK) return Mock.call(body);
+  if (!navigator.onLine) return Promise.reject(new Error('offline'));
+  return fetch(API_URL, { method:'POST', body:JSON.stringify(body), headers:{ 'Content-Type':'text/plain;charset=utf-8' } })
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      if (!j.ok) {
+        if (j.error === 'signed_out' || j.error === 'blocked') { logout(); toast(ERRORS[j.error]); }
+        throw new Error(j.error);
+      }
+      return j;
+    });
+}
+function errText(e) { var m = (e && e.message) || String(e); return ERRORS[m] || ('שגיאה: ' + m); }
+
+// ================= outbox (IndexedDB: survives without reception) =================
+var db = null;
+function openDb() {
+  return new Promise(function (res, rej) {
+    var r = indexedDB.open('fungi_outbox', 1);
+    r.onupgradeneeded = function () { r.result.createObjectStore('visits', { keyPath:'visit.visit_id' }); };
+    r.onsuccess = function () { db = r.result; res(); };
+    r.onerror = function () { rej(r.error); };
+  });
+}
+function tx(mode, fn) {
+  return new Promise(function (res, rej) {
+    var t = db.transaction('visits', mode), st = t.objectStore('visits'), out = fn(st);
+    t.oncomplete = function () { res(out && out.result !== undefined ? out.result : undefined); };
+    t.onerror = function () { rej(t.error); };
+  });
+}
+function outboxAll() { return tx('readonly', function (st) { return st.getAll(); }); }
+function outboxPut(pkg) { return tx('readwrite', function (st) { st.put(pkg); }); }
+function outboxDel(id) { return tx('readwrite', function (st) { st.delete(id); }); }
+
+function refreshOutbox() {
+  return outboxAll().then(function (all) {
+    $('outboxCount').textContent = all.length;
+    $('btnOutbox').classList.toggle('hidden', all.length === 0);
+    return all;
+  });
+}
+
+var sending = false;
+function sendPackage(pkg) {
+  var obs = pkg.observations.map(function (o) {
+    var c = Object.assign({}, o); delete c.photos; return c;
+  });
+  var p = pkg.sentVisit ? Promise.resolve()
+        : api('uploadVisit', { visit:pkg.visit, observations:obs, track:pkg.track })
+            .then(function () { pkg.sentVisit = true; return outboxPut(pkg); });
+  pkg.observations.forEach(function (o) {
+    Object.keys(o.photos || {}).forEach(function (kind) {
+      p = p.then(function () {
+        if (!o.photos[kind]) return;
+        return api('uploadPhoto', { obs_id:o.obs_id, kind:kind, data:o.photos[kind].split(',')[1] })
+          .then(function () { o.photos[kind] = null; return outboxPut(pkg); });
+      });
+    });
+  });
+  return p.then(function () { return outboxDel(pkg.visit.visit_id); });
+}
+function sendOutbox(onlyAuto) {
+  if (sending || !session) return Promise.resolve();
+  sending = true;
+  return outboxAll().then(function (all) {
+    var todo = all.filter(function (p) { return !onlyAuto || p.auto; });
+    var chain = Promise.resolve(), n = 0;
+    todo.forEach(function (pkg) { chain = chain.then(function () { return sendPackage(pkg).then(function () { n++; }); }); });
+    return chain.then(function () { if (n) toast(n === 1 ? 'הביקור נשלח' : n + ' ביקורים נשלחו'); });
+  }).catch(function (e) {
+    if (!onlyAuto) toast(errText(e) + '. ננסה שוב כשתהיה קליטה');
+  }).then(function () { sending = false; refreshOutbox(); if (!$('sHome').classList.contains('hidden')) loadKit(); });
+}
+window.addEventListener('online', function () { sendOutbox(true); });
+setInterval(function () { if (navigator.onLine) sendOutbox(true); }, 60000);
+
+// ================= GPS (only while the app is open) =================
+var lastFix = null, gpsWatch = null, fixListeners = [];
+function startGps() {
+  if (gpsWatch !== null || !('geolocation' in navigator)) return;
+  gpsWatch = navigator.geolocation.watchPosition(function (pos) {
+    var c = pos.coords;
+    lastFix = { lat:c.latitude, lon:c.longitude, acc:c.accuracy, t:Date.now() };
+    fixListeners.forEach(function (f) { f(lastFix); });
+  }, function (e) {
+    if (e.code === 1) toast('אין הרשאת מיקום. יש לאפשר מיקום בהגדרות הדפדפן', 6000);
+  }, { enableHighAccuracy:true, maximumAge:0, timeout:20000 });
+}
+
+// ================= maps =================
+var homeMap, searchMap, histMap, adminMap;
+function makeMap(id) {
+  var m = L.map(id, { zoomControl:false }).setView([32.66, 34.97], 13);
+  m.attributionControl.setPrefix(false);
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+              { maxZoom:20, maxNativeZoom:19, attribution:'Esri, Maxar' }).addTo(m);
+  m._me = L.circleMarker([0, 0], { radius:7, color:'#fff', weight:2, fillColor:'#1a73e8', fillOpacity:1 });
+  m._acc = L.circle([0, 0], { radius:1, color:'#1a73e8', weight:1, fillOpacity:.12, interactive:false });
+  fixListeners.push(function (f) {
+    m._me.setLatLng([f.lat, f.lon]).addTo(m); m._acc.setLatLng([f.lat, f.lon]).setRadius(f.acc).addTo(m);
+  });
+  return m;
+}
+function cellPolygon(c, style) { return L.polygon(c.corners, style); }
+
+// ================= 1. login =================
+function startLogin() {
+  show('sLogin');
+  var pend = store('pendingEmail');
+  if (pend) { $('loginEmail').value = pend; $('loginCodeBox').classList.remove('hidden'); }
+}
+$('btnRequest').onclick = function () {
+  var email = $('loginEmail').value.trim().toLowerCase();
+  if (!/^\S+@\S+\.\S+$/.test(email)) { $('loginMsg').textContent = 'המייל לא תקין'; return; }
+  $('btnRequest').disabled = true; $('loginMsg').textContent = '';
+  api('requestJoin', { email:email }).then(function (r) {
+    store('pendingEmail', email);
+    $('loginPending').classList.toggle('hidden', r.state !== 'pending');
+    $('loginCodeBox').classList.remove('hidden');
+    if (r.state === 'code_sent') $('loginMsg').textContent = 'נשלח קוד למייל ' + email + (MOCK ? ' (בדיקה: 123456)' : '');
+    if (r.state === 'blocked') $('loginMsg').textContent = ERRORS.blocked;
+  }).catch(function (e) { $('loginMsg').textContent = errText(e); })
+    .then(function () { $('btnRequest').disabled = false; });
+};
+$('btnResend').onclick = $('btnRequest').onclick;
+$('btnVerify').onclick = function () {
+  var email = $('loginEmail').value.trim().toLowerCase();
+  api('verifyCode', { email:email, code:$('loginCode').value }).then(function (r) {
+    session = { email:r.email, token:r.token, access:r.access, admin:r.admin, consent:r.consent };
+    store('session', session); forget('pendingEmail');
+    afterLogin();
+  }).catch(function (e) { $('loginMsg').textContent = errText(e); });
+};
+function logout() { session = null; forget('session'); startLogin(); }
+$('mLogout').onclick = function () { if (confirm('להתנתק?')) logout(); };
+
+// ================= 2. consent =================
+$('chkConsent').onchange = function () { $('btnConsent').disabled = !this.checked; };
+$('btnConsent').onclick = function () {
+  api('consent').then(function () {
+    session.consent = true; store('session', session);
+    startGps(); goHome();
+  }).catch(function (e) { toast(errText(e)); });
+};
+function afterLogin() {
+  if (!session.consent) { show('sConsent'); return; }
+  startGps(); goHome();
+  api('me').then(function (r) { session.access = r.access; session.admin = r.admin; store('session', session);
+    $('mAdmin').classList.toggle('hidden', !r.admin); }).catch(function () {});
+}
+
+// ================= 3. home =================
+var kit = store('kit') || { cells:[] }, kitLayers = [];
+var visitedIds = store('visitedIds') || {};   // cells reported from this phone (also while still in the outbox)
+
+function goHome() {
+  show('sHome');
+  $('mAdmin').classList.toggle('hidden', !session.admin);
+  if (!homeMap) homeMap = makeMap('homeMap');
+  refreshOutbox(); drawKit(); loadKit();
+}
+function loadKit() {
+  return api('kit').then(function (r) { kit = r; store('kit', r); drawKit(); })
+    .catch(function () { /* offline: keep the kit stored on the phone */ });
+}
+function drawKit() {
+  kitLayers.forEach(function (l) { homeMap.removeLayer(l); }); kitLayers = [];
+  var sheet = $('homeSheet'), html = '';
+  if (!kit.cells || !kit.cells.length) {
+    sheet.innerHTML = '<p>אין לך ערכת תאים פתוחה.</p><button id="btnDraw">הגרלת 5 תאים</button>';
+    $('btnDraw').onclick = newKit;
+    return;
+  }
+  var bounds = L.latLngBounds([]);
+  kit.cells.forEach(function (c, i) {
+    var done = visitedIds[c.id] || c.done;
+    var poly = cellPolygon(c, { color: done ? '#d0d0d0' : '#ffd54f', weight:3, fillOpacity:.15 }).addTo(homeMap);
+    poly.bindTooltip(String(i + 1), { permanent:true, direction:'center', className:'' });
+    kitLayers.push(poly); bounds.extend(poly.getBounds());
+    html += '<div class="cellrow"><div class="num" style="' + (done ? 'background:#888' : '') + '">' + (i + 1) + '</div>' +
+      '<div class="grow">תא ' + (i + 1) + (done ? ' · <span class="muted">דווח</span>' : '') +
+      '<br><a href="https://www.google.com/maps/dir/?api=1&destination=' + c.center[0] + ',' + c.center[1] +
+      '" target="_blank">ניווט לתא</a></div>' +
+      (done ? '' : '<button class="small second" data-rep="' + c.id + '">החלפה</button>' +
+                   '<button class="small" data-go="' + i + '">הגעתי</button>') + '</div>';
+  });
+  var allDone = kit.cells.every(function (c) { return visitedIds[c.id] || c.done; });
+  if (allDone) html += '<p style="margin-top:10px">סיימת את כל 5 התאים. תודה!</p><button id="btnDraw">הגרלת ערכה חדשה</button>';
+  sheet.innerHTML = html;
+  if (allDone) $('btnDraw').onclick = newKit;
+  sheet.querySelectorAll('[data-go]').forEach(function (b) { b.onclick = function () { arrive(kit.cells[Number(b.dataset.go)], Number(b.dataset.go) + 1); }; });
+  sheet.querySelectorAll('[data-rep]').forEach(function (b) { b.onclick = function () { replaceCell(b.dataset.rep); }; });
+  if (bounds.isValid()) homeMap.fitBounds(bounds.pad(0.3));
+}
+function newKit() {
+  api('drawKit').then(function (r) { kit = r; store('kit', r); visitedIds = {}; store('visitedIds', visitedIds); drawKit(); })
+    .catch(function (e) {
+      if (e.message === 'kit_not_finished') { toast('חלק מהביקורים עדיין ממתינים לשליחה. שלחו אותם קודם'); return; }
+      toast(errText(e));
+    });
+}
+function replaceCell(id) {
+  var reason = prompt('למה להחליף את התא? (למשל: לא נגיש, רחוק מדי, שטח סגור)');
+  if (reason === null) return;
+  api('replaceCell', { cell_id:id, reason:reason }).then(function (r) { kit = r; store('kit', r); drawKit(); toast('התא הוחלף'); })
+    .catch(function (e) { toast(errText(e)); });
+}
+$('btnMenu').onclick = function () { $('menu').classList.toggle('hidden'); };
+$('btnOutbox').onclick = function () {
+  if (confirm('לשלוח עכשיו את כל מה שממתין?')) { toast('שולח...'); sendOutbox(false); }
+};
+
+// ================= 4. arrival =================
+var visit = null;   // the visit in progress
+function arrive(cell, num) {
+  visit = { cell:cell, num:num, quality:null, observations:[], track:[] };
+  $('arriveTitle').textContent = 'הגעתי לתא ' + num;
+  $('minutesTxt').textContent = SEARCH_MINUTES;
+  var r = $('rate'); r.innerHTML = '';
+  [1, 2, 3, 4, 5].forEach(function (q) {
+    var b = document.createElement('button'); b.textContent = q;
+    b.onclick = function () { visit.quality = q; r.querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === b); }); $('btnStart').disabled = false; };
+    r.appendChild(b);
+  });
+  $('btnStart').disabled = true;
+  show('sArrive'); $('menu').classList.add('hidden');
+}
+$('btnArriveBack').onclick = goHome;
+
+// ================= 5. search =================
+var audio = null, wakeLock = null, tick = null, endTime = 0, running = false;
+var outsideRun = 0, isOutside = false, lastAlertT = 0, lastTrackT = 0, trackLine = null, cellLayer = null;
+var M_LAT = 110574;
+function mLon(lat) { return 111320 * Math.cos(lat * Math.PI / 180); }
+function insidePoly(lat, lon, pts) {   // ray casting on lat/lon
+  var inside = false;
+  for (var i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    var yi = pts[i][0], xi = pts[i][1], yj = pts[j][0], xj = pts[j][1];
+    if (((yi > lat) !== (yj > lat)) && (lon < (xj - xi) * (lat - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+function distOutside(lat, lon, pts) {   // metres from the cell edge (0 inside)
+  if (insidePoly(lat, lon, pts)) return 0;
+  var k = mLon(lat), best = Infinity;
+  for (var i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    var ax = (pts[j][1] - lon) * k, ay = (pts[j][0] - lat) * M_LAT, bx = (pts[i][1] - lon) * k, by = (pts[i][0] - lat) * M_LAT;
+    var dx = bx - ax, dy = by - ay, t = Math.max(0, Math.min(1, -(ax * dx + ay * dy) / (dx * dx + dy * dy)));
+    best = Math.min(best, Math.hypot(ax + t * dx, ay + t * dy));
+  }
+  return best;
+}
+function beep(freq, ms, times) {
+  if (!audio) return;
+  for (var i = 0; i < times; i++) {
+    var o = audio.createOscillator(), g = audio.createGain(), t0 = audio.currentTime + i * (ms + 120) / 1000;
+    o.frequency.value = freq; o.connect(g); g.connect(audio.destination); g.gain.setValueAtTime(0.6, t0);
+    o.start(t0); o.stop(t0 + ms / 1000);
+  }
+}
+function buzz(p) { try { if (navigator.vibrate) navigator.vibrate(p); } catch (e) {} }
+function keepAwake() {
+  if ('wakeLock' in navigator) navigator.wakeLock.request('screen').then(function (w) { wakeLock = w; }).catch(function () {});
+}
+document.addEventListener('visibilitychange', function () { if (running && document.visibilityState === 'visible') keepAwake(); });
+
+$('btnStart').onclick = function () {
+  audio = audio || new (window.AudioContext || window.webkitAudioContext)(); audio.resume();
+  beep(660, 120, 1); keepAwake();
+  visit.visit_id = uid(); visit.start = Date.now(); endTime = visit.start + SEARCH_MINUTES * 60000;
+  outsideRun = 0; isOutside = false; lastTrackT = 0; running = true;
+  show('sSearch');
+  if (!searchMap) { searchMap = makeMap('searchMap'); trackLine = L.polyline([], { color:'#ff5252', weight:4 }).addTo(searchMap); }
+  if (cellLayer) searchMap.removeLayer(cellLayer);
+  cellLayer = cellPolygon(visit.cell, { color:'#ffd54f', weight:4, fillOpacity:.1 }).addTo(searchMap);
+  searchMap.fitBounds(cellLayer.getBounds().pad(0.6));
+  trackLine.setLatLngs([]);
+  $('obsCount').textContent = '0 תצפיות';
+  clearInterval(tick);
+  tick = setInterval(function () {
+    var left = (endTime - Date.now()) / 1000;
+    $('timer').textContent = fmt(left);
+    if (left <= 0) endSearch(true);
+  }, 250);
+  saveDraft();
+};
+fixListeners.push(function (f) {
+  if (!running || !visit) return;
+  var d = distOutside(f.lat, f.lon, visit.cell.corners);
+  if (f.acc <= MAX_ACCURACY_M) outsideRun = d > EXIT_BUFFER_M ? outsideRun + 1 : 0;
+  isOutside = outsideRun >= EXIT_FIXES;
+  $('exitAlert').style.display = isOutside ? 'block' : 'none';
+  if (isOutside && Date.now() - lastAlertT >= ALERT_REPEAT_S * 1000) { lastAlertT = Date.now(); beep(880, 180, 2); buzz([300, 150, 300]); }
+  $('searchStatus').textContent = 'דיוק GPS ' + Math.round(f.acc) + ' מ\' · ' + (d === 0 ? 'בתוך התא' : Math.round(d) + ' מ\' מחוץ לתא');
+  if (f.t - lastTrackT >= TRACK_EVERY_S * 1000) {
+    lastTrackT = f.t;
+    visit.track.push({ t:f.t, lat:+f.lat.toFixed(7), lon:+f.lon.toFixed(7), acc:Math.round(f.acc * 10) / 10, d:Math.round(d * 10) / 10, alert:isOutside ? 1 : 0 });
+    trackLine.addLatLng([f.lat, f.lon]);
+    if (visit.track.length % 15 === 0) saveDraft();
+  }
+});
+$('btnFinish').onclick = function () { if (confirm('לסיים את החיפוש לפני הזמן?')) endSearch(false); };
+
+function endSearch(timeUp) {
+  running = false; clearInterval(tick);
+  if (wakeLock) { wakeLock.release().catch(function () {}); wakeLock = null; }
+  $('exitAlert').style.display = 'none';
+  if (timeUp) { beep(520, 500, 3); buzz([600, 200, 600, 200, 600]); }
+  visit.end = Date.now();
+  saveDraft();
+  showEnd(timeUp);
+}
+
+// draft: if the phone restarts in the middle, the visit is not lost
+function saveDraft() { if (visit) store('draft', visit); }
+
+// ================= 6. observation: one question per page =================
+var obs = null, camStream = null, step = 0;
+var STEPS = [
+  { kind:'photo', shot:'top',     title:'צלמו את הפטרייה מלמעלה' },
+  { kind:'photo', shot:'under',   title:'צלמו את הפטרייה מלמטה', note:'את החלק התחתון של הכובע. לא לקטוף' },
+  { kind:'photo', shot:'habitat', title:'צלמו את בית הגידול', note:'הפטרייה והסביבה שלה, מכמה צעדים' },
+  { kind:'count', title:'כמה פרטים יש כאן?' },
+  { kind:'taxon', title:'יודעים מה זה?', note:'לא חובה. אם לא יודעים, ממשיכים' }
+];
+$('btnPlus').onclick = function () {
+  obs = { obs_id:uid(), photos:{}, count:null, taxon_level:'', taxon_name:'' };
+  step = 0; show('sObs'); renderStep(true);
+};
+function renderStep(autoCamera) {
+  var s = STEPS[step], body = $('stepBody'), ok = $('btnStepOk');
+  $('stepNo').textContent = 'שלב ' + (step + 1) + ' מתוך ' + STEPS.length;
+  $('stepTitle').textContent = s.title;
+  $('btnStepBack').textContent = step === 0 ? 'ביטול' : '→';
+  ok.textContent = step === STEPS.length - 1 ? 'שמירה' : '←';
+  var note = s.note ? '<p class="muted" style="text-align:center">' + s.note + '</p>' : '';
+  if (s.kind === 'photo') {
+    var src = obs.photos[s.shot];
+    body.innerHTML = note + (src
+      ? '<img src="' + src + '" style="width:100%;max-height:45vh;object-fit:contain;border-radius:12px;background:#000">' +
+        '<button class="second" id="btnRetake">צילום מחדש</button>'
+      : '<button id="btnShoot" style="padding:40px 0;font-size:22px">📷 לצילום</button>') +
+      (step > 0 && !src ? '<button class="second small" id="btnSkip" style="margin-top:14px">אי אפשר לצלם, לדלג</button>' : '');
+    ok.disabled = !src;
+    var shoot = function () { openCamera(s.title); };
+    if ($('btnShoot')) $('btnShoot').onclick = shoot;
+    if ($('btnRetake')) $('btnRetake').onclick = shoot;
+    if ($('btnSkip')) $('btnSkip').onclick = function () { step++; renderStep(true); };
+    if (autoCamera && !src) shoot();
+  } else if (s.kind === 'count') {
+    body.innerHTML = note + '<div class="chips" style="justify-content:center">' + COUNTS.map(function (c) {
+      return '<button data-n="' + c[1] + '" style="font-size:22px;padding:14px 20px" class="' +
+             (obs.countLabel === c[0] ? 'on' : '') + '">' + c[0] + '</button>'; }).join('') + '</div>' +
+      '<input type="number" id="countExact" min="1" placeholder="או מספר מדויק" inputmode="numeric" style="margin-top:12px"' +
+      (obs.count && !obs.countLabel ? ' value="' + obs.count + '"' : '') + '>';
+    body.querySelectorAll('[data-n]').forEach(function (b) {
+      b.onclick = function () { obs.count = Number(b.dataset.n); obs.countLabel = b.textContent; renderStep(); };
+    });
+    $('countExact').oninput = function () { var n = parseInt(this.value, 10); obs.count = n > 0 ? n : null; obs.countLabel = null;
+      body.querySelectorAll('[data-n]').forEach(function (b) { b.classList.remove('on'); }); ok.disabled = !obs.count; };
+    ok.disabled = !obs.count;
+  } else {
+    body.innerHTML = note + '<div class="chips" style="justify-content:center">' + TAXA.map(function (t) {
+      return '<button data-t="' + t[0] + '" style="font-size:20px;padding:12px 18px" class="' +
+             (obs.taxon_level === t[0] ? 'on' : '') + '">' + t[1] + '</button>'; }).join('') + '</div>' +
+      (obs.taxon_level ? '<input type="text" id="taxName" style="margin-top:12px" placeholder="שם ה' +
+        { species:'מין', genus:'סוג', family:'משפחה' }[obs.taxon_level] + '" value="' + esc(obs.taxon_name) + '">' : '');
+    body.querySelectorAll('[data-t]').forEach(function (b) {
+      b.onclick = function () { obs.taxon_level = b.dataset.t; if (!obs.taxon_level) obs.taxon_name = ''; renderStep();
+        if ($('taxName')) $('taxName').focus(); };
+    });
+    if ($('taxName')) $('taxName').oninput = function () { obs.taxon_name = this.value; };
+    ok.disabled = false;
+  }
+}
+$('btnStepOk').onclick = function () {
+  if (step < STEPS.length - 1) { step++; renderStep(true); return; }
+  saveObs();
+};
+$('btnStepBack').onclick = function () {
+  if (step === 0) { if (confirm('לבטל את התצפית?')) { closeCamera(); obs = null; show(visit.end ? 'sEnd' : 'sSearch'); } return; }
+  step--; renderStep();
+};
+$('btnObsCancel').onclick = $('btnStepBack').onclick;
+
+function openCamera(label) {
+  $('camLabel').textContent = label;
+  if (camStream) { $('camera').classList.remove('hidden'); return; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { $('fileFallback').click(); return; }
+  navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment', width:{ ideal:1920 }, height:{ ideal:1440 } }, audio:false })
+    .then(function (s) { camStream = s; $('camVideo').srcObject = s; $('camera').classList.remove('hidden'); })
+    .catch(function () { $('fileFallback').click(); });
+}
+function closeCamera() {
+  $('camera').classList.add('hidden');
+  if (camStream) { camStream.getTracks().forEach(function (t) { t.stop(); }); camStream = null; }
+}
+function stampFirstShot() {   // time and place of the observation = moment of the first photo
+  if (obs.t) return;
+  obs.t = Date.now();
+  if (lastFix) { obs.lat = +lastFix.lat.toFixed(7); obs.lon = +lastFix.lon.toFixed(7); obs.acc = Math.round(lastFix.acc * 10) / 10; }
+}
+function storeShot(dataUrl) {
+  obs.photos[STEPS[step].shot] = dataUrl;
+  closeCamera(); renderStep();
+}
+function shrink(source, w, h) {
+  var s = Math.min(1, PHOTO_MAX_PX / Math.max(w, h)), c = document.createElement('canvas');
+  c.width = Math.round(w * s); c.height = Math.round(h * s);
+  c.getContext('2d').drawImage(source, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.8);
+}
+$('btnShutter').onclick = function () {
+  var v = $('camVideo'); if (!v.videoWidth) return;
+  stampFirstShot(); beep(1200, 40, 1);
+  storeShot(shrink(v, v.videoWidth, v.videoHeight));
+};
+$('btnCamClose').onclick = closeCamera;
+$('fileFallback').onchange = function () {
+  var f = this.files[0]; if (!f) return; stampFirstShot();
+  var img = new Image(); img.onload = function () { storeShot(shrink(img, img.naturalWidth, img.naturalHeight)); URL.revokeObjectURL(img.src); };
+  img.src = URL.createObjectURL(f); this.value = '';
+};
+function saveObs() {
+  obs.taxon_name = obs.taxon_level ? String(obs.taxon_name || '').trim() : '';
+  if (!obs.taxon_name) obs.taxon_level = '';
+  var unnamed = visit.observations.filter(function (o) { return !o.taxon_name; }).length;
+  obs.label = obs.taxon_name || ('מין ' + HEB_LABELS[unnamed % HEB_LABELS.length]);
+  visit.observations.push(obs); obs = null;
+  saveDraft();
+  $('obsCount').textContent = visit.observations.length + ' תצפיות';
+  if (visit.end) showEnd(false); else show('sSearch');
+  toast('התצפית נשמרה');
+}
+
+// ================= 7. end of visit =================
+function showEnd(timeUp) {
+  show('sEnd');
+  $('endMsg').textContent = (timeUp ? 'הזמן נגמר, אפשר לעזוב את התא. ' : '') +
+    'תא ' + visit.num + ' · ' + fmt((visit.end - visit.start) / 1000) + ' דקות · ' + visit.track.length + ' נקודות מסלול';
+  $('endCards').innerHTML = visit.observations.map(function (o) {
+    return '<div class="card"><b>' + esc(o.label) + '</b>' +
+      (o.taxon_level ? ' <span class="muted">(' + { species:'מין', genus:'סוג', family:'משפחה' }[o.taxon_level] + ')</span>' : '') +
+      ' · ' + (o.countLabel || o.count) + ' פרטים<div class="thumbs">' +
+      SHOTS.map(function (s) { return o.photos[s[0]] ? '<img src="' + o.photos[s[0]] + '">' : ''; }).join('') + '</div></div>';
+  }).join('');
+  var none = visit.observations.length === 0;
+  $('nothingBox').classList.toggle('hidden', !none);
+  $('chkNothing').checked = false;
+  $('btnSendNow').disabled = $('btnSendLater').disabled = none;
+  if (!none) $('endCards').insertAdjacentHTML('beforeend', '<button class="second" id="btnMore">עוד תצפית</button>');
+  if (!none) $('btnMore').onclick = function () { $('btnPlus').onclick(); };
+}
+$('chkNothing').onchange = function () { $('btnSendNow').disabled = $('btnSendLater').disabled = !this.checked; };
+function packVisit(auto) {
+  var pkg = {
+    auto:auto,
+    visit:{ visit_id:visit.visit_id, cell_id:visit.cell.id, quality:visit.quality, start:visit.start, end:visit.end },
+    observations:visit.observations.map(function (o) {
+      return { obs_id:o.obs_id, t:o.t, lat:o.lat, lon:o.lon, acc:o.acc, count:o.count,
+               taxon_level:o.taxon_level, taxon_name:o.taxon_name, label:o.label, photos:o.photos };
+    }),
+    track:visit.track
+  };
+  return outboxPut(pkg).then(function () {
+    visitedIds[visit.cell.id] = 1; store('visitedIds', visitedIds);
+    forget('draft'); visit = null;
+  });
+}
+$('btnSendNow').onclick = function () {
+  packVisit(true).then(function () { goHome(); toast('שולח...'); return sendOutbox(false); });
+};
+$('btnSendLater').onclick = function () {
+  packVisit(false).then(function () { goHome(); toast('נשמר בטלפון. אפשר לשלוח מהכפתור "ממתינים לשליחה"'); });
+};
+
+// ================= 8. history =================
+var histLayers = [];
+function photoViewer(obsId, kinds, caption) {
+  var v = document.createElement('div'); v.className = 'viewer';
+  v.innerHTML = '<img id="pvImg" alt=""><div class="cap">' + esc(caption) + '</div><div class="chips" id="pvKinds"></div>' +
+                '<button class="second small" id="pvClose">סגירה</button>';
+  document.body.appendChild(v);
+  v.querySelector('#pvClose').onclick = function () { v.remove(); };
+  function load(kind) {
+    v.querySelector('#pvImg').src = '';
+    api('photo', { obs_id:obsId, kind:kind }).then(function (r) { v.querySelector('#pvImg').src = 'data:image/jpeg;base64,' + r.data; })
+      .catch(function (e) { toast(errText(e)); });
+  }
+  var names = { top:'מלמעלה', under:'מלמטה', habitat:'בית הגידול' };
+  v.querySelector('#pvKinds').innerHTML = kinds.map(function (k) { return '<button data-k="' + k + '">' + names[k] + '</button>'; }).join('');
+  v.querySelectorAll('[data-k]').forEach(function (b) { b.onclick = function () { load(b.dataset.k); }; });
+  if (kinds.length) load(kinds[0]);
+}
+function drawVisits(map, layers, visits, colorOf, withTracks) {
+  layers.forEach(function (l) { map.removeLayer(l); }); layers.length = 0;
+  var b = L.latLngBounds([]);
+  visits.forEach(function (v) {
+    var col = colorOf(v);
+    if (v.cell) { var p = cellPolygon(v.cell, { color:col, weight:2, fillOpacity:.1 }).addTo(map); layers.push(p); b.extend(p.getBounds());
+      p.bindPopup(esc(v.who) + '<br>דירוג ' + v.quality + ' · ' + (v.nothing_found == 1 ? 'לא נמצא כלום' : v.observations.length + ' תצפיות')); }
+    v.observations.forEach(function (o) {
+      if (!o.lat) return;
+      var m = L.circleMarker([o.lat, o.lon], { radius:7, color:'#fff', weight:2, fillColor:col, fillOpacity:1 }).addTo(map);
+      m.on('click', function () { photoViewer(o.obs_id, o.photos, o.label + ' · ' + o.count + ' פרטים · ' + esc(v.who)); });
+      layers.push(m);
+    });
+    if (withTracks) api('track', { visit_id:v.visit_id }).then(function (r) {
+      if (r.points.length) layers.push(L.polyline(r.points, { color:col, weight:3, opacity:.8 }).addTo(map));
+    }).catch(function () {});
+  });
+  if (b.isValid()) map.fitBounds(b.pad(0.3));
+}
+function openHistory() {
+  $('menu').classList.add('hidden'); show('sHistory');
+  if (!histMap) histMap = makeMap('histMap');
+  $('histList').innerHTML = '<p class="muted">טוען...</p>';
+  api('history').then(function (r) {
+    var mine = r.visits.filter(function (v) { return v.mine; });
+    drawVisits(histMap, histLayers, r.visits, function (v) { return v.mine ? '#2f6b3a' : '#8a5cc2'; }, true);
+    $('histList').innerHTML = (r.access === 'all' ? '<p class="muted">ירוק: שלך · סגול: של משתתפים אחרים</p>' : '') +
+      (mine.length ? mine.map(function (v) {
+        return '<div class="cellrow"><div class="grow">' + new Date(v.start).toLocaleDateString('he-IL') + ' · דירוג ' + v.quality + ' · ' +
+               (v.nothing_found == 1 ? 'לא נמצא כלום' : v.observations.length + ' תצפיות') + '</div></div>';
+      }).join('') : '<p>עדיין לא נשלחו ביקורים.</p>');
+  }).catch(function (e) { $('histList').innerHTML = '<p>' + errText(e) + '</p>'; });
+}
+$('mHistory').onclick = openHistory;
+document.querySelectorAll('.back').forEach(function (b) { b.onclick = goHome; });
+
+// ================= 9. admin =================
+var adminLayers = [], adminData = null;
+var PALETTE = ['#2f6b3a', '#b3261e', '#1a73e8', '#e8a01a', '#8a5cc2', '#00897b', '#d81b60', '#6d4c41', '#3949ab', '#7cb342'];
+function openAdmin() {
+  $('menu').classList.add('hidden'); show('sAdmin');
+  if (!adminMap) adminMap = makeMap('adminMap');
+  $('adminSummary').textContent = 'טוען...';
+  api('adminData').then(function (r) { adminData = r; renderAdmin(); }).catch(function (e) { $('adminSummary').textContent = errText(e); });
+}
+function colorOfEmail(email) {
+  var i = adminData.users.map(function (u) { return u.email; }).indexOf(email); return PALETTE[(i < 0 ? 0 : i) % PALETTE.length];
+}
+function renderAdmin() {
+  var who = $('adminWho').value || '';
+  $('adminWho').innerHTML = '<option value="">כל המשתתפים</option>' + adminData.users.filter(function (u) { return u.n_visits; })
+    .map(function (u) { return '<option value="' + esc(u.email) + '">' + esc(u.email) + '</option>'; }).join('');
+  $('adminWho').value = who;
+  var visits = adminData.visits.filter(function (v) { return !who || v.email === who; });
+  drawVisits(adminMap, adminLayers, visits, function (v) { return colorOfEmail(v.email); }, true);
+  var nObs = visits.reduce(function (s, v) { return s + v.observations.length; }, 0);
+  $('adminSummary').textContent = visits.length + ' ביקורים · ' + nObs + ' תצפיות · ' +
+    adminData.users.filter(function (u) { return u.status === 'pending'; }).length + ' בקשות ממתינות';
+  var st = { pending:'ממתין', approved:'מאושר', blocked:'חסום', removed:'הוסר' };
+  $('adminUsers').innerHTML = '<tr><th>מייל</th><th>ביקורים</th><th>מצב</th><th>רואה</th></tr>' + adminData.users.map(function (u) {
+    var me = u.no === 0 || u.no === '0';
+    return '<tr><td style="color:' + colorOfEmail(u.email) + '">' + esc(u.email) + '</td><td>' + u.n_visits + ' / ' + u.n_obs + '</td><td>' +
+      (me ? 'מנהלת' : '<select data-s="' + esc(u.email) + '">' + ['pending', 'approved', 'blocked', 'removed'].map(function (s) {
+        return '<option value="' + s + '"' + (u.status === s ? ' selected' : '') + (s === 'pending' ? ' disabled' : '') + '>' + st[s] + '</option>'; }).join('') + '</select>') +
+      '</td><td>' + (me ? 'הכול' : '<select data-a="' + esc(u.email) + '"><option value="own"' + (u.access === 'own' ? ' selected' : '') +
+      '>רק שלו</option><option value="all"' + (u.access === 'all' ? ' selected' : '') + '>שלו ושל אחרים</option></select>') + '</td></tr>';
+  }).join('');
+  $('adminUsers').querySelectorAll('[data-s]').forEach(function (s) { s.onchange = function () { adminSet({ target:s.dataset.s, status:s.value }); }; });
+  $('adminUsers').querySelectorAll('[data-a]').forEach(function (s) { s.onchange = function () { adminSet({ target:s.dataset.a, access:s.value }); }; });
+}
+function adminSet(body) {
+  api('adminSetUser', body).then(function () { toast('עודכן'); openAdmin(); }).catch(function (e) { toast(errText(e)); });
+}
+$('adminWho').onchange = renderAdmin;
+$('btnAdminReload').onclick = openAdmin;
+$('mAdmin').onclick = openAdmin;
+
+// ================= start =================
+openDb().then(function () {
+  var draft = store('draft');
+  if (session && draft && draft.start) {   // the app was closed in the middle of a visit
+    visit = draft;
+    if (!draft.end) { draft.end = Date.now(); saveDraft(); }
+    showEnd(false); toast('המשך של ביקור שלא הסתיים');
+    return;
+  }
+  if (session) afterLogin(); else startLogin();
+  if (session) sendOutbox(true);
+});
+if ('serviceWorker' in navigator && !MOCK) navigator.serviceWorker.register('sw.js').catch(function () {});
+
+// ================= local mock of the Google side (for testing only) =================
+var Mock = (function () {
+  var S = store('mockState') || { users:{}, kits:[], visits:[], obs:[], photos:{}, tracks:{} };
+  var cells = null;
+  function save() { try { localStorage.setItem('mockState', JSON.stringify(S)); } catch (e) {} }
+  function loadCells() {
+    if (cells) return Promise.resolve(cells);
+    return fetch('google/cells.json').then(function (r) { return r.json(); }).then(function (j) { cells = j.cells; return cells; });
+  }
+  function pub(c) { return { id:c.id, center:c.center, corners:c.corners }; }
+  function kitOf(email) {
+    var byId = {}; cells.forEach(function (c) { byId[c.id] = c; });
+    var k = S.kits.filter(function (k) { return k.email === email && (k.status === 'active' || k.status === 'visited'); });
+    if (!k.some(function (x) { return x.status === 'active'; }) && k.length < 5) k = [];
+    return { ok:true, kit_no:k.length ? 1 : null, cells:k.map(function (x) { var c = pub(byId[x.cell_id]); c.done = x.status === 'visited'; return c; }) };
+  }
+  function auth(b) { var u = S.users[b.email]; if (!u || u.token !== b.token) throw new Error('signed_out'); return u; }
+  var A = {
+    requestJoin:function (b) { var e = b.email; if (!S.users[e]) S.users[e] = { email:e, status:'approved', access:'own', no:Object.keys(S.users).length + 1 };
+      return { ok:true, state:'code_sent' }; },
+    verifyCode:function (b) { var u = S.users[b.email]; if (!u) throw new Error('not_approved'); if (b.code !== '123456') throw new Error('wrong_code');
+      u.token = uid(); return { ok:true, token:u.token, email:u.email, access:u.access, consent:!!u.consent, admin:/admin|nitzanbs/.test(u.email) }; },
+    me:function (b) { var u = auth(b); return { ok:true, email:u.email, access:u.access, consent:!!u.consent, admin:/admin|nitzanbs/.test(u.email) }; },
+    consent:function (b) { auth(b).consent = Date.now(); return { ok:true }; },
+    kit:function (b) { auth(b); return kitOf(b.email); },
+    drawKit:function (b) { auth(b);
+      S.kits.forEach(function (k) { if (k.email === b.email && k.status === 'visited') k.status = 'closed'; });
+      var seed = cells[Math.floor(Math.random() * cells.length)], pick = [];
+      ['hot', 'hot', 'middle', 'cold', 'cold'].forEach(function (lv) {
+        var c = cells.filter(function (c) { return c.level === lv && pick.indexOf(c) < 0; })
+          .sort(function (a, z) { return Math.hypot(a.x - seed.x, a.y - seed.y) - Math.hypot(z.x - seed.x, z.y - seed.y); })[0];
+        pick.push(c);
+      });
+      pick.forEach(function (c) { S.kits.push({ email:b.email, kit_no:1, cell_id:c.id, level:c.level, status:'active' }); });
+      return kitOf(b.email); },
+    replaceCell:function (b) { auth(b);
+      var k = S.kits.filter(function (k) { return k.email === b.email && k.status === 'active' && k.cell_id === b.cell_id; })[0];
+      k.status = 'replaced';
+      var c = cells.filter(function (c) { return c.level === k.level && !S.kits.some(function (x) { return x.cell_id === c.id; }); })[0];
+      S.kits.push({ email:b.email, kit_no:1, cell_id:c.id, level:c.level, status:'active' }); return kitOf(b.email); },
+    uploadVisit:function (b) { auth(b);
+      if (S.visits.some(function (v) { return v.visit_id === b.visit.visit_id; })) return { ok:true, duplicate:true };
+      S.visits.push(Object.assign({ email:b.email, nothing_found:b.observations.length ? 0 : 1 }, b.visit));
+      b.observations.forEach(function (o) { S.obs.push(Object.assign({ email:b.email, visit_id:b.visit.visit_id, photos:[] }, o)); });
+      S.tracks[b.visit.visit_id] = b.track.map(function (p) { return [p.lat, p.lon]; });
+      S.kits.forEach(function (k) { if (k.email === b.email && k.status === 'active' && k.cell_id === b.visit.cell_id) k.status = 'visited'; });
+      return { ok:true }; },
+    uploadPhoto:function (b) { auth(b); var o = S.obs.filter(function (o) { return o.obs_id === b.obs_id; })[0];
+      if (o.photos.indexOf(b.kind) < 0) o.photos.push(b.kind); S.photos[b.obs_id + '_' + b.kind] = b.data; return { ok:true }; },
+    history:function (b) { var u = auth(b); return { ok:true, access:u.access, visits:visitsOf(function (v) { return v.email === b.email || u.access === 'all'; })
+      .map(function (v) { v.mine = v.email === b.email; v.who = v.mine ? 'אני' : 'משתתף ' + S.users[v.email].no; return v; }) }; },
+    photo:function (b) { auth(b); return { ok:true, data:S.photos[b.obs_id + '_' + b.kind] }; },
+    track:function (b) { auth(b); return { ok:true, points:S.tracks[b.visit_id] || [] }; },
+    adminData:function (b) { auth(b);
+      return { ok:true, visits:visitsOf(function () { return true; }).map(function (v) { v.who = v.email; return v; }),
+        users:Object.keys(S.users).map(function (e) { var u = S.users[e];
+          return { email:e, no:/admin|nitzanbs/.test(e) ? 0 : u.no, status:u.status, access:u.access,
+                   n_visits:S.visits.filter(function (v) { return v.email === e; }).length, n_obs:S.obs.filter(function (o) { return o.email === e; }).length }; }) }; },
+    adminSetUser:function (b) { auth(b); var u = S.users[b.target]; if (b.status) { u.status = b.status; if (b.status !== 'approved') u.token = null; }
+      if (b.access) u.access = b.access; return { ok:true }; }
+  };
+  function visitsOf(filter) {
+    var byId = {}; cells.forEach(function (c) { byId[c.id] = c; });
+    return S.visits.filter(filter).map(function (v) {
+      return { visit_id:v.visit_id, email:v.email, cell:pub(byId[v.cell_id]), quality:v.quality, start:v.start,
+               minutes:(v.end - v.start) / 60000, nothing_found:v.nothing_found,
+               observations:S.obs.filter(function (o) { return o.visit_id === v.visit_id; })
+                 .map(function (o) { return { obs_id:o.obs_id, lat:o.lat, lon:o.lon, count:o.count, label:o.label, photos:o.photos }; }) };
+    });
+  }
+  return { state:S, call:function (b) {
+    return loadCells().then(function () {
+      var r = A[b.action](b); save(); return JSON.parse(JSON.stringify(r));
+    });
+  } };
+})();
+</script>
+</body>
+</html>
