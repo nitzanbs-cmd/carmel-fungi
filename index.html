@@ -546,13 +546,14 @@ function distOutside(lat, lon, pts) {   // metres from the cell edge (0 inside)
   return best;
 }
 // soft chimes: a bell-like note (soft attack, long fade) instead of a hard beep
-function chime(notes, gap) {
+function chime(notes, gap, wave) {
   if (!audio) return;
   notes.forEach(function (f, i) {
+    if (!f) return;   // 0 = a rest
     var t0 = audio.currentTime + i * (gap || 0.22);
     [1, 2].forEach(function (h) {   // the note and a quiet octave give a bell colour
       var o = audio.createOscillator(), g = audio.createGain();
-      o.type = 'sine'; o.frequency.value = f * h; o.connect(g); g.connect(audio.destination);
+      o.type = wave || 'sine'; o.frequency.value = f * h; o.connect(g); g.connect(audio.destination);
       g.gain.setValueAtTime(0.0001, t0);
       g.gain.exponentialRampToValueAtTime(h === 1 ? 0.28 : 0.06, t0 + 0.02);
       g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.9);
@@ -560,8 +561,11 @@ function chime(notes, gap) {
     });
   });
 }
-var SOUND = { start:[523, 659], exit:[659, 523], offer:[587, 784], end:[523, 659, 784, 1047], shutter:[1047] };
-function beep(kind) { chime(SOUND[kind], kind === 'shutter' ? 0.1 : 0.25); }
+// place (leaving the cell) = high bell; time (offer to stop, time is up) = low soft 'ding-dong' in a different colour
+var SOUND = { start:[523, 659], exit:[880, 698],
+              offer:[392, 330, 392], end:[392, 330, 392, 0, 392, 330, 523], shutter:[1047] };
+var WAVE = { offer:'triangle', end:'triangle' };
+function beep(kind) { chime(SOUND[kind].filter(Boolean).length ? SOUND[kind] : [], kind === 'shutter' ? 0.1 : (WAVE[kind] ? 0.42 : 0.25), WAVE[kind]); }
 function buzz(p) { try { if (navigator.vibrate) navigator.vibrate(p); } catch (e) {} }
 function keepAwake() {
   if ('wakeLock' in navigator) navigator.wakeLock.request('screen').then(function (w) { wakeLock = w; }).catch(function () {});
