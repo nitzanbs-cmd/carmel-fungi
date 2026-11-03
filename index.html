@@ -91,10 +91,10 @@
       הבקשה נשלחה. כשהיא תאושר יגיע אליך מייל עם קוד כניסה.
     </div>
     <div id="loginCodeBox" class="hidden" style="margin-top:14px">
-      <p>הקלידו את הקוד בן 6 הספרות שהגיע במייל:</p>
+      <p>הקלידו את קוד הכניסה הקבוע שלך (6 ספרות) מהמייל:</p>
       <input type="text" id="loginCode" class="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code">
       <button id="btnVerify">כניסה</button>
-      <button id="btnResend" class="second">שליחת קוד חדש</button>
+      <button id="btnResend" class="second">שליחת הקוד שוב למייל</button>
     </div>
     <p class="muted" id="loginMsg" style="margin-top:12px"></p>
   </div>
@@ -252,7 +252,7 @@ function fmt(s) { s = Math.max(0, Math.ceil(s)); return Math.floor(s / 60) + ':'
 function store(k, v) { try { if (v === undefined) return JSON.parse(localStorage.getItem(k)); localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; } }
 function forget(k) { try { localStorage.removeItem(k); } catch (e) {} }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]; }); }
-var ERRORS = { wrong_code:'הקוד שגוי', code_expired:'הקוד פג תוקף. בקשו קוד חדש', too_many_tries:'יותר מדי ניסיונות. בקשו קוד חדש',
+var ERRORS = { wrong_code:'הקוד שגוי', code_expired:'עדיין לא נשלח קוד. לחצו שליחה', too_many_tries:'יותר מדי ניסיונות. לחצו על שליחת הקוד שוב',
                not_approved:'הבקשה עדיין לא אושרה', signed_out:'צריך להתחבר מחדש', blocked:'הגישה שלך הוגבלה',
                bad_email:'המייל לא תקין', kit_not_finished:'יש עדיין תאים פתוחים בערכה', offline:'אין קליטה כרגע' };
 
@@ -382,7 +382,7 @@ $('btnRequest').onclick = function () {
     store('pendingEmail', email);
     $('loginPending').classList.toggle('hidden', r.state !== 'pending');
     $('loginCodeBox').classList.remove('hidden');
-    if (r.state === 'code_sent') $('loginMsg').textContent = 'נשלח קוד למייל ' + email + (MOCK ? ' (בדיקה: 123456)' : '');
+    if (r.state === 'code_sent') $('loginMsg').textContent = 'קוד הכניסה נשלח למייל ' + email + (MOCK ? ' (בדיקה: 123456)' : '');
     if (r.state === 'blocked') $('loginMsg').textContent = ERRORS.blocked;
   }).catch(function (e) { $('loginMsg').textContent = errText(e); })
     .then(function () { $('btnRequest').disabled = false; });
