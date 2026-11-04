@@ -229,6 +229,7 @@
 // Paste the web-app URL of the Google deployment here (Deploy -> New deployment -> Web app).
 var API_URL = 'https://script.google.com/macros/s/AKfycbzzFk6FTTyXC9qdofzwRHXVR7Nurpo4KFDFzwyqEgIkvxx4YBAEvbSng9YqA9k7pYAx/exec';
 var SEARCH_MINUTES = 20;
+var STEEP_DEG      = 25;     // safety mark: a cell this steep (degrees) gets a warning
 var EXIT_BUFFER_M  = 5;      // alert when this far outside the cell edge
 var EXIT_FIXES     = 3;      // ...for this many fixes in a row
 var MAX_ACCURACY_M = 25;     // poorer fixes never trigger the alert
@@ -474,6 +475,7 @@ function drawKit() {
     kitLayers.push(poly); bounds.extend(poly.getBounds());
     html += '<div class="cellrow"><div class="num" style="' + (done ? 'background:#888' : '') + '">' + (i + 1) + '</div>' +
       '<div class="grow">תא ' + (i + 1) + (done ? ' · <span class="muted">דווח</span>' : '') +
+      (c.slope >= STEEP_DEG ? '<br><span style="color:#b3261e;font-weight:700">⚠ שיפוע תלול, כ-' + Math.round(c.slope) + '°. זהירות</span>' : '') +
       '<br><a href="https://www.google.com/maps/dir/?api=1&destination=' + c.center[0] + ',' + c.center[1] +
       '" target="_blank">ניווט לתא</a></div>' +
       (done ? '' : '<button class="small second" data-rep="' + c.id + '">החלפה</button>' +
@@ -513,6 +515,7 @@ var visit = null;   // the visit in progress
 function arrive(cell, num) {
   visit = { cell:cell, num:num, quality:null, observations:[], track:[] };
   $('arriveTitle').textContent = 'הגעתי לתא ' + num;
+  if (cell.slope >= STEEP_DEG) toast('⚠ התא תלול (כ-' + Math.round(cell.slope) + '°). הולכים בזהירות, ואם לא בטוח לא נכנסים', 8000);
   $('minutesTxt').textContent = SEARCH_MINUTES;
   var r = $('rate'); r.innerHTML = '';
   [1, 2, 3, 4, 5].forEach(function (q) {
