@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>funGIS · דשבורד</title>
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root { --green:#2f6b3a; --green2:#e6efe5; --ink:#1d2a20; --muted:#5d6b60; --line:#d9e2d8; --bg:#f5f7f4;
+          --hot:#d84315; --mid:#f9a825; --cold:#1e88e5; --none:#8d8d8d; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui, "Segoe UI", Arial, sans-serif; color:var(--ink); background:var(--bg); }
+  header { background:var(--green); color:#fff; padding:10px 18px; display:flex; align-items:center; gap:14px; }
+  header h1 { font-size:20px; margin:0; flex:1; }
+  header .credit { font-size:12px; opacity:.85; }
+  header button { background:#fff; color:var(--green); border:0; border-radius:8px; padding:7px 14px; font-weight:700; cursor:pointer; }
+  .wrap { display:grid; grid-template-columns: 340px 1fr; gap:14px; padding:14px; }
+  @media (max-width:900px) { .wrap { grid-template-columns:1fr; } }
+  .panel { background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
+  .panel h2 { font-size:15px; margin:0 0 8px; color:var(--green); }
+  label.f { display:block; font-size:13px; color:var(--muted); margin:8px 0 3px; }
+  select, input[type=date] { width:100%; padding:6px 8px; border:1px solid var(--line); border-radius:8px; font:inherit; }
+  .row2 { display:flex; gap:8px; } .row2 > * { flex:1; }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); gap:10px; margin-bottom:14px; }
+  .tile { background:#fff; border:1px solid var(--line); border-radius:12px; padding:10px 12px; }
+  .tile b { display:block; font-size:26px; color:var(--green); }
+  .tile span { font-size:13px; color:var(--muted); }
+  #map { height:62vh; min-height:420px; border-radius:12px; border:1px solid var(--line); }
+  .layers { display:flex; flex-wrap:wrap; gap:6px; margin:10px 0 14px; }
+  .layers button { border:1.5px solid var(--green); background:#fff; color:var(--green); border-radius:18px; padding:5px 12px;
+                   font:inherit; font-size:14px; cursor:pointer; }
+  .layers button.on { background:var(--green); color:#fff; }
+  .layers .sep { width:1px; background:var(--line); margin:0 4px; }
+  .charts { display:grid; grid-template-columns:repeat(auto-fill, minmax(330px, 1fr)); gap:12px; margin-bottom:14px; }
+  .charts .panel { height:270px; display:flex; flex-direction:column; } .charts canvas { flex:1; min-height:0; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:right; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { background:var(--green2); position:sticky; top:0; cursor:pointer; }
+  .tablebox { max-height:380px; overflow:auto; }
+  .dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-left:4px; vertical-align:middle; }
+  .btn { background:var(--green); color:#fff; border:0; border-radius:8px; padding:8px 12px; font:inherit; cursor:pointer; width:100%; margin-top:10px; }
+  .muted { color:var(--muted); font-size:13px; }
+  .shroom { font-size:16px; line-height:16px; text-shadow:0 0 2px #fff; cursor:pointer; }
+  .lbl { background:rgba(255,255,255,.9); border:1px solid #999; border-radius:9px; padding:0 5px; font-size:12px; font-weight:700; }
+  #viewer { position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:9000; display:none; align-items:center; justify-content:center; flex-direction:column; }
+  #viewer img { max-width:92vw; max-height:78vh; border-radius:8px; }
+  #viewer .cap { color:#fff; margin:10px; } #viewer .thumbs button { margin:4px; }
+  #gate { max-width:460px; margin:60px auto; text-align:center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>funGIS · דשבורד המחקר</h1>
+  <span class="credit">ניצן בר שמואל · מכון שמיר למחקר</span>
+  <button id="btnXlsx">⬇ הורדה לאקסל</button>
+  <button id="btnReload">רענון</button>
+</header>
+
+<div id="gate" class="panel hidden" style="display:none">
+  <h2>הדשבורד פתוח רק למנהלת</h2>
+  <p>נכנסים קודם לאפליקציה funGIS בדפדפן הזה, עם המייל והקוד שלך, וחוזרים לכאן.</p>
+  <p><a href="./">לאפליקציה</a></p>
+</div>
+
+<div class="wrap" id="main">
+  <aside>
+    <div class="panel">
+      <h2>סינון</h2>
+      <label class="f">משתתף</label><select id="fWho"></select>
+      <label class="f">תפקיד</label>
+      <select id="fRole"><option value="">כולם</option><option value="expert">סוקרים מומחים</option><option value="citizen">אזרחים</option></select>
+      <label class="f">סוג ניטור</label>
+      <select id="fMode"><option value="">הכול</option><option value="carmel">לפי מודל · חוף הכרמל</option><option value="near">מה נמצא לידי · אקראי</option><option value="drop">זרוק עליי</option></select>
+      <label class="f">רמת התא במודל</label>
+      <select id="fLevel"><option value="">הכול</option><option value="hot">חם</option><option value="middle">בינוני</option><option value="cold">קר</option><option value="none">בלי מודל</option></select>
+      <div class="row2"><div><label class="f">מתאריך</label><input type="date" id="fFrom"></div><div><label class="f">עד תאריך</label><input type="date" id="fTo"></div></div>
+      <button class="btn" id="btnClear" style="background:#fff;color:var(--green);border:1.5px solid var(--green)">ניקוי סינון</button>
+      <p class="muted" id="loadMsg">טוען...</p>
+    </div>
+    <div class="panel" style="margin-top:14px">
+      <h2>משתתפים והרשאות</h2>
+      <div class="tablebox" style="max-height:420px"><table id="tUsers"></table></div>
+    </div>
+  </aside>
+
+  <section>
+    <div class="tiles" id="tiles"></div>
+    <div id="map"></div>
+    <div class="layers" id="layerBtns"></div>
+    <div class="charts">
+      <div class="panel"><h2>פטריות לביקור לפי רמת התא</h2><canvas id="cLevel"></canvas></div>
+      <div class="panel"><h2>ביקורים לאורך זמן</h2><canvas id="cTime"></canvas></div>
+      <div class="panel"><h2>המינים והסוגים שדווחו</h2><canvas id="cTaxa"></canvas></div>
+      <div class="panel"><h2>משך החיפוש (דקות)</h2><canvas id="cMin"></canvas></div>
+      <div class="panel"><h2>דירוג המקום (1–5)</h2><canvas id="cQual"></canvas></div>
+      <div class="panel"><h2>סוקרים מומחים מול אזרחים</h2><canvas id="cRole"></canvas></div>
+    </div>
+    <div class="panel">
+      <h2>ביקורים</h2>
+      <div class="tablebox"><table id="tVisits"></table></div>
+    </div>
+  </section>
+</div>
+
+<div id="viewer"><img id="vImg"><div class="cap" id="vCap"></div><div class="thumbs" id="vThumbs"></div>
+  <button id="vClose" class="btn" style="width:auto">סגירה</button></div>
+
+<script>
+var API_URL = 'https://script.google.com/macros/s/AKfycbzzFk6FTTyXC9qdofzwRHXVR7Nurpo4KFDFzwyqEgIkvxx4YBAEvbSng9YqA9k7pYAx/exec';
+var MOCK = /[?&]mock=1/.test(location.search);
+var LEVELS = { hot:['חם', '#d84315'], middle:['בינוני', '#f9a825'], cold:['קר', '#1e88e5'], none:['בלי מודל', '#8d8d8d'] };
+var MODES = { carmel:'חוף הכרמל (מודל)', near:'לידי · אקראי', drop:'זרוק עליי' };
+var ROLES = { expert:'סוקר מומחה', citizen:'אזרח' };
+function $(id) { return document.getElementById(id); }
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]; }); }
+var session = null; try { session = JSON.parse(localStorage.getItem('session')); } catch (e) {}
+
+function api(action, body) {
+  body = body || {}; body.action = action;
+  if (MOCK) return Promise.resolve(mockApi(body));
+  body.email = session.email; body.token = session.token;
+  return fetch(API_URL, { method:'POST', body:JSON.stringify(body), headers:{ 'Content-Type':'text/plain;charset=utf-8' } })
+    .then(function (r) { return r.json(); }).then(function (r) { if (!r.ok) throw new Error(r.error || 'error'); return r; });
+}
+
+// ================= data =================
+var D = null, tracks = {};   // tracks[visit_id] = [[lat, lon], ...]
+function load() {
+  $('loadMsg').textContent = 'טוען...';
+  return api('dashData').then(function (r) {
+    D = r;
+    D.visits.forEach(function (v) { v.fungi = v.observations.reduce(function (s, o) { return s + (Number(o.count) || 0); }, 0);
+      v.level = v.level || 'none'; v.day = v.start ? String(v.start).slice(0, 10) : ''; });
+    $('fWho').innerHTML = '<option value="">כל המשתתפים</option>' + D.users.filter(function (u) { return u.n_visits; })
+      .map(function (u) { return '<option value="' + esc(u.email) + '">' + esc(u.email) + '</option>'; }).join('');
+    $('loadMsg').textContent = 'עודכן ' + new Date().toLocaleTimeString('he-IL');
+    renderUsers(); render();
+    loadTracks();
+  }).catch(function (e) { $('loadMsg').textContent = 'שגיאה: ' + e.message; });
+}
+function loadTracks() {   // one request per visit, in the background; the map refreshes as they arrive
+  var todo = D.visits.filter(function (v) { return !tracks[v.visit_id]; });
+  (function next() {
+    var v = todo.shift(); if (!v) return;
+    api('track', { visit_id:v.visit_id }).then(function (r) { tracks[v.visit_id] = r.points || []; drawTracks(); })
+      .catch(function () { tracks[v.visit_id] = []; }).then(next);
+  })();
+}
+function filtered() {
+  var who = $('fWho').value, role = $('fRole').value, mode = $('fMode').value, lv = $('fLevel').value, a = $('fFrom').value, b = $('fTo').value;
+  return D.visits.filter(function (v) {
+    return (!who || v.email === who) && (!role || v.role === role) && (!mode || v.mode === mode) && (!lv || v.level === lv) &&
+           (!a || v.day >= a) && (!b || v.day <= b);
+  });
+}
+['fWho', 'fRole', 'fMode', 'fLevel', 'fFrom', 'fTo'].forEach(function (id) { $(id).onchange = render; });
+$('btnClear').onclick = function () { ['fWho', 'fRole', 'fMode', 'fLevel', 'fFrom', 'fTo'].forEach(function (id) { $(id).value = ''; }); render(); };
+$('btnReload').onclick = function () { tracks = {}; load(); };
+
+// ================= map =================
+var map = L.map('map', { zoomControl:true }).fitBounds([[31.25, 34.25], [33.33, 35.9]]);   // Israel from Be'er Sheva north
+map.attributionControl.setPrefix(false);
+var BASE = {
+  street: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19, attribution:'© OpenStreetMap' }),
+  sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom:20, maxNativeZoom:19, attribution:'Esri, Maxar' })
+};
+BASE.street.addTo(map);
+var OV = { cells:L.layerGroup(), tracks:L.layerGroup(), obs:L.layerGroup(), counts:L.layerGroup(), heat:null, areas:L.layerGroup(), contours:L.layerGroup() };
+var ON = { cells:true, tracks:true, obs:true, counts:false, heat:true, areas:false, contours:false };
+var LAYER_BTNS = [['base', 'street', 'מפה רגילה'], ['base', 'sat', 'תצלום לוויין'], ['sep'],
+  ['ov', 'heat', 'מפת חום'], ['ov', 'counts', 'מספר תצפיות'], ['ov', 'cells', 'תאים שנבדקו'], ['ov', 'tracks', 'מסלולים'],
+  ['ov', 'obs', 'תצפיות ותמונות'], ['ov', 'areas', 'יערות קק"ל ורט"ג'], ['ov', 'contours', 'קווי גובה']];
+var baseNow = 'street';
+function renderLayerBtns() {
+  $('layerBtns').innerHTML = LAYER_BTNS.map(function (b) {
+    if (b[0] === 'sep') return '<span class="sep"></span>';
+    var on = b[0] === 'base' ? baseNow === b[1] : ON[b[1]];
+    return '<button class="' + (on ? 'on' : '') + '" data-k="' + b[0] + ':' + b[1] + '">' + b[2] + '</button>';
+  }).join('');
+  $('layerBtns').querySelectorAll('button').forEach(function (btn) { btn.onclick = function () {
+    var k = btn.dataset.k.split(':');
+    if (k[0] === 'base') { map.removeLayer(BASE[baseNow]); baseNow = k[1]; BASE[baseNow].addTo(map).bringToBack(); }
+    else { ON[k[1]] = !ON[k[1]]; if (k[1] === 'areas' && ON.areas) loadAreas(); if (k[1] === 'contours' && ON.contours) loadContours(); }
+    applyLayers(); renderLayerBtns();
+  }; });
+}
+function applyLayers() {
+  ['cells', 'tracks', 'obs', 'counts', 'areas', 'contours'].forEach(function (k) { if (ON[k]) OV[k].addTo(map); else map.removeLayer(OV[k]); });
+  if (OV.heat) { if (ON.heat) OV.heat.addTo(map); else map.removeLayer(OV.heat); }
+  drawContours();
+}
+function shroomIcon() { return L.divIcon({ className:'shroom', html:'🍄', iconSize:[16, 16], iconAnchor:[8, 8] }); }
+function drawMap(vs) {
+  OV.cells.clearLayers(); OV.obs.clearLayers(); OV.counts.clearLayers();
+  var heatPts = [], b = L.latLngBounds([]);
+  vs.forEach(function (v) {
+    var col = LEVELS[v.level][1];
+    if (v.cell && v.cell.corners) {
+      var p = L.polygon(v.cell.corners, { color:col, weight:2, fillOpacity:.15 }).bindPopup(
+        '<b>' + esc(v.who) + '</b><br>' + esc(MODES[v.mode] || '') + ' · רמה: ' + LEVELS[v.level][0] + '<br>' +
+        (v.day || '') + ' · ' + (Number(v.minutes) || 0).toFixed(1) + ' דק\' · דירוג ' + (v.quality || '–') + '<br>' +
+        (v.nothing_found == 1 ? 'לא נמצא כלום' : v.observations.length + ' תצפיות, ' + v.fungi + ' פטריות'));
+      OV.cells.addLayer(p); b.extend(p.getBounds());
+      OV.counts.addLayer(L.marker(v.cell.center, { interactive:false,
+        icon:L.divIcon({ className:'', html:'<span class="lbl">' + v.observations.length + '</span>', iconSize:[24, 16], iconAnchor:[12, 8] }) }));
+    }
+    v.observations.forEach(function (o) {
+      if (!o.lat) return;
+      heatPts.push([Number(o.lat), Number(o.lon), Math.min(1, (Number(o.count) || 1) / 5)]);
+      var m = L.marker([o.lat, o.lon], { icon:shroomIcon() }).on('click', function () { openPhotos(o, v); });
+      m.bindTooltip(esc(o.label || '') + ' · ' + (o.count || 1) + ' פרטים');
+      OV.obs.addLayer(m); b.extend([o.lat, o.lon]);
+    });
+  });
+  if (OV.heat) map.removeLayer(OV.heat);
+  OV.heat = L.heatLayer(heatPts, { radius:28, blur:22, maxZoom:15, minOpacity:.35 });
+  drawTracks(); applyLayers();
+  return b;
+}
+var TRACK_COLORS = ['#ff5252', '#7c4dff', '#00bfa5', '#ff9100', '#2979ff', '#c51162', '#64dd17'];
+function drawTracks() {
+  if (!D) return; OV.tracks.clearLayers();
+  var emails = D.users.map(function (u) { return u.email; });
+  filtered().forEach(function (v) {
+    var t = tracks[v.visit_id]; if (!t || !t.length) return;
+    OV.tracks.addLayer(L.polyline(t, { color:TRACK_COLORS[Math.max(0, emails.indexOf(v.email)) % TRACK_COLORS.length], weight:3, opacity:.85 })
+      .bindTooltip(esc(v.who) + ' · ' + (v.day || '')));
+  });
+}
+// KKL / RTG and contour lines: the same files the app carries
+var areasLoaded = false, CONTOURS = null;
+function loadAreas() {
+  if (areasLoaded) return; areasLoaded = true;
+  fetch('areas.json').then(function (r) { return r.json(); }).then(function (a) {
+    var rnd = L.canvas();
+    a.forEach(function (x) { OV.areas.addLayer(L.polygon(x.r, x.k === 'kkl'
+      ? { renderer:rnd, color:'#2e7d32', weight:1.2, fillOpacity:.06 } : { renderer:rnd, color:'#ef6c00', weight:1.5, dashArray:'5 4', fillOpacity:.1 })
+      .bindTooltip(x.k === 'kkl' ? esc(x.n || 'יער קק"ל') : 'שטח רט"ג')); });
+  });
+}
+function loadContours() {
+  if (CONTOURS) return;
+  CONTOURS = [];
+  fetch('contours.json').then(function (r) { return r.json(); }).then(function (a) {
+    CONTOURS = a.map(function (l) { var b = [90, 180, -90, -180];
+      l[1].forEach(function (p) { b[0] = Math.min(b[0], p[0]); b[1] = Math.min(b[1], p[1]); b[2] = Math.max(b[2], p[0]); b[3] = Math.max(b[3], p[1]); });
+      return { e:l[0], pts:l[1], b:b }; });
+    drawContours();
+  });
+}
+var cRnd = L.canvas({ padding:.2 });
+function drawContours() {
+  OV.contours.clearLayers();
+  if (!ON.contours || !CONTOURS || !CONTOURS.length || map.getZoom() < 13) return;
+  var v = map.getBounds().pad(.2), s = v.getSouth(), n = v.getNorth(), w = v.getWest(), e = v.getEast(), sat = baseNow === 'sat';
+  CONTOURS.forEach(function (l) {
+    if (l.b[2] < s || l.b[0] > n || l.b[3] < w || l.b[1] > e) return;
+    var major = l.e % 50 === 0;
+    OV.contours.addLayer(L.polyline(l.pts, { renderer:cRnd, interactive:false, color:sat ? '#fff3d6' : '#8d6e63',
+      weight:major ? 1.6 : .8, opacity:major ? .9 : .6 }));
+  });
+}
+map.on('moveend', drawContours);
+
+// ================= photos =================
+function openPhotos(o, v) {
+  var kinds = o.photos || [], names = { top:'מלמעלה', under:'מלמטה', habitat:'בית גידול' };
+  $('viewer').style.display = 'flex';
+  $('vCap').textContent = (o.label || '') + ' · ' + (o.count || 1) + ' פרטים · ' + v.who + ' · ' + (v.day || '');
+  $('vThumbs').innerHTML = kinds.map(function (k) { return '<button class="btn" style="width:auto" data-k="' + k + '">' + names[k] + '</button>'; }).join('');
+  $('vThumbs').querySelectorAll('button').forEach(function (b) { b.onclick = function () { show(b.dataset.k); }; });
+  function show(k) {
+    $('vImg').src = '';
+    api('photo', { obs_id:o.obs_id, kind:k }).then(function (r) { $('vImg').src = 'data:image/jpeg;base64,' + r.data; })
+      .catch(function () { $('vCap').textContent = 'התמונה לא נטענה'; });
+  }
+  if (kinds.length) show(kinds[0]); else $('vImg').removeAttribute('src');
+}
+$('vClose').onclick = function () { $('viewer').style.display = 'none'; };
+
+// ================= tiles, charts, tables =================
+var charts = {};
+Chart.defaults.font.family = 'system-ui, "Segoe UI", Arial'; Chart.defaults.color = '#3c4a3f';
+function chart(id, cfg) { if (charts[id]) charts[id].destroy(); cfg.options = Object.assign({ maintainAspectRatio:false,
+  plugins:{ legend:{ display:!!cfg.legend } }, scales:{ y:{ beginAtZero:true, ticks:{ precision:0 } } } }, cfg.options || {});
+  charts[id] = new Chart($(id), cfg); }
+function mean(a) { return a.length ? a.reduce(function (s, x) { return s + x; }, 0) / a.length : 0; }
+function render() {
+  if (!D) return;
+  var vs = filtered(), obs = [];
+  vs.forEach(function (v) { v.observations.forEach(function (o) { obs.push(o); }); });
+  var people = {}; vs.forEach(function (v) { people[v.email] = 1; });
+  var tiles = [[Object.keys(people).length, 'משתתפים'], [vs.length, 'ביקורים'], [obs.length, 'תצפיות'],
+    [vs.reduce(function (s, v) { return s + v.fungi; }, 0), 'פטריות שנספרו'],
+    [vs.filter(function (v) { return v.nothing_found == 1; }).length, 'ביקורים בלי כלום'],
+    [D.users.filter(function (u) { return u.status === 'pending'; }).length, 'ממתינים לאישור']];
+  $('tiles').innerHTML = tiles.map(function (t) { return '<div class="tile"><b>' + t[0] + '</b><span>' + t[1] + '</span></div>'; }).join('');
+
+  var b = drawMap(vs);
+  if (b.isValid() && !render.fitted) { map.fitBounds(b.pad(.4), { maxZoom:15 }); render.fitted = true; }
+
+  var lv = ['hot', 'middle', 'cold', 'none'];
+  chart('cLevel', { type:'bar', data:{ labels:lv.map(function (k) { return LEVELS[k][0]; }),
+    datasets:[{ data:lv.map(function (k) { return +mean(vs.filter(function (v) { return v.level === k; }).map(function (v) { return v.fungi; })).toFixed(2); }),
+                backgroundColor:lv.map(function (k) { return LEVELS[k][1]; }) }] },
+    options:{ plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ afterLabel:function (c) {
+      return 'ביקורים: ' + vs.filter(function (v) { return v.level === lv[c.dataIndex]; }).length; } } } }, scales:{ y:{ beginAtZero:true } } } });
+
+  var days = {}; vs.forEach(function (v) { if (v.day) days[v.day] = (days[v.day] || 0) + 1; });
+  var dk = Object.keys(days).sort();
+  chart('cTime', { type:'bar', data:{ labels:dk, datasets:[{ data:dk.map(function (d) { return days[d]; }), backgroundColor:'#2f6b3a' }] } });
+
+  var tx = {}; obs.forEach(function (o) { var n = o.taxon_name || 'לא זוהה'; tx[n] = (tx[n] || 0) + (Number(o.count) || 1); });
+  var tk = Object.keys(tx).sort(function (a, c) { return tx[c] - tx[a]; }).slice(0, 15);
+  chart('cTaxa', { type:'bar', data:{ labels:tk, datasets:[{ data:tk.map(function (k) { return tx[k]; }), backgroundColor:'#8d6e63' }] },
+    options:{ indexAxis:'y', scales:{ x:{ beginAtZero:true, ticks:{ precision:0 } } } } });
+
+  var bins = [0, 5, 10, 13, 17, 20, 99], bl = ['0–5', '5–10', '10–13', '13–17', '17–20', '20+'];
+  chart('cMin', { type:'bar', data:{ labels:bl, datasets:[{ data:bl.map(function (x, i) { return vs.filter(function (v) {
+    var m = Number(v.minutes) || 0; return m >= bins[i] && m < bins[i + 1]; }).length; }), backgroundColor:'#558b2f' }] } });
+
+  chart('cQual', { type:'bar', data:{ labels:['1', '2', '3', '4', '5'], datasets:[{ data:[1, 2, 3, 4, 5].map(function (q) {
+    return vs.filter(function (v) { return Number(v.quality) === q; }).length; }), backgroundColor:'#f9a825' }] } });
+
+  var rk = ['expert', 'citizen'];
+  chart('cRole', { type:'bar', legend:true, data:{ labels:['ביקורים', 'פטריות לביקור', 'תצפיות לביקור'], datasets:rk.map(function (r, i) {
+    var x = vs.filter(function (v) { return v.role === r; });
+    return { label:ROLES[r], backgroundColor:i ? '#1e88e5' : '#2f6b3a',
+             data:[x.length, +mean(x.map(function (v) { return v.fungi; })).toFixed(2), +mean(x.map(function (v) { return v.observations.length; })).toFixed(2)] }; }) } });
+
+  $('tVisits').innerHTML = '<tr><th>תאריך</th><th>מי</th><th>תפקיד</th><th>סוג</th><th>רמה</th><th>דקות</th><th>דירוג</th><th>תצפיות</th><th>פטריות</th></tr>' +
+    vs.slice().sort(function (a, c) { return String(c.start).localeCompare(String(a.start)); }).map(function (v) {
+      return '<tr data-v="' + esc(v.visit_id) + '"><td>' + esc(v.day) + '</td><td>' + esc(v.who) + '</td><td>' + (ROLES[v.role] || '') + '</td><td>' +
+        (MODES[v.mode] || '') + '</td><td><span class="dot" style="background:' + LEVELS[v.level][1] + '"></span>' + LEVELS[v.level][0] +
+        '</td><td>' + (Number(v.minutes) || 0).toFixed(1) + '</td><td>' + (v.quality || '') + '</td><td>' + v.observations.length + '</td><td>' + v.fungi + '</td></tr>';
+    }).join('');
+  $('tVisits').querySelectorAll('tr[data-v]').forEach(function (tr) { tr.style.cursor = 'pointer'; tr.onclick = function () {
+    var v = D.visits.filter(function (x) { return x.visit_id === tr.dataset.v; })[0];
+    if (v && v.cell) { map.fitBounds(L.polygon(v.cell.corners).getBounds().pad(1.5)); document.getElementById('map').scrollIntoView({ behavior:'smooth' }); }
+  }; });
+}
+function renderUsers() {
+  var st = { pending:'ממתין', approved:'מאושר', blocked:'חסום', removed:'הוסר' };
+  $('tUsers').innerHTML = '<tr><th>מייל</th><th>ביקורים</th><th>מצב</th><th>תפקיד</th><th>רואה</th></tr>' + D.users.map(function (u) {
+    var me = /nitzanbs/.test(u.email);
+    function sel(f, opts, cur) { return me ? (opts[cur] || cur) : '<select data-f="' + f + '" data-e="' + esc(u.email) + '">' +
+      Object.keys(opts).map(function (k) { return '<option value="' + k + '"' + (k === cur ? ' selected' : '') + '>' + opts[k] + '</option>'; }).join('') + '</select>'; }
+    return '<tr><td>' + esc(u.email) + '</td><td>' + (u.n_visits || 0) + '</td><td>' +
+      sel('status', u.status === 'pending' ? { pending:'ממתין', approved:'לאשר', blocked:'לחסום' } : { approved:'מאושר', blocked:'חסום', removed:'הוסר' }, u.status) +
+      '</td><td>' + sel('role', { citizen:'אזרח', expert:'סוקר מומחה' }, u.role) + '</td><td>' + sel('access', { own:'רק את שלו', all:'את כולם' }, u.access) + '</td></tr>';
+  }).join('');
+  $('tUsers').querySelectorAll('select').forEach(function (s) { s.onchange = function () {
+    if (s.dataset.f === 'status' && s.value !== 'approved' && !confirm('לשנות את המצב של ' + s.dataset.e + '? הנתונים שלו נשמרים')) { renderUsers(); return; }
+    var body = { target:s.dataset.e }; body[s.dataset.f] = s.value;
+    api('adminSetUser', body).then(function () { D.users.forEach(function (u) { if (u.email === s.dataset.e) u[s.dataset.f] = s.value; }); })
+      .catch(function (e) { alert('לא נשמר: ' + e.message); renderUsers(); });
+  }; });
+}
+
+// ================= Excel: one sheet per kind, with the current filter =================
+$('btnXlsx').onclick = function () {
+  if (!D) return;
+  var vs = filtered(), wb = XLSX.utils.book_new();
+  var V = vs.map(function (v) { return { visit_id:v.visit_id, email:v.email, role:v.role, mode:v.mode, cell_id:v.cell_id, level:v.level,
+    date:v.day, start:v.start, end:v.end, minutes:v.minutes, quality_1_5:v.quality, nothing_found:v.nothing_found,
+    n_observations:v.observations.length, n_fungi:v.fungi, n_track_points:v.n_track,
+    cell_lat:v.cell && v.cell.center ? v.cell.center[0] : '', cell_lon:v.cell && v.cell.center ? v.cell.center[1] : '',
+    slope_deg:v.cell ? v.cell.slope : '' }; });
+  var O = []; vs.forEach(function (v) { v.observations.forEach(function (o) { O.push({ obs_id:o.obs_id, visit_id:v.visit_id, email:v.email,
+    role:v.role, mode:v.mode, level:v.level, time:o.time, lat:o.lat, lon:o.lon, count:o.count, taxon_level:o.taxon_level,
+    taxon_name:o.taxon_name, label:o.label, photos:(o.photos || []).join(' ') }); }); });
+  var U = D.users.map(function (u) { return { email:u.email, participant_no:u.no, status:u.status, role:u.role, access:u.access,
+    requested_at:u.requested_at, consent_at:u.consent_at, last_seen:u.last_seen, n_visits:u.n_visits, n_obs:u.n_obs }; });
+  var T = []; vs.forEach(function (v) { (tracks[v.visit_id] || []).forEach(function (p, i) { T.push({ visit_id:v.visit_id, email:v.email, n:i + 1, lat:p[0], lon:p[1] }); }); });
+  [['Visits', V], ['Observations', O], ['Users', U], ['TrackPoints', T]].forEach(function (s) {
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(s[1].length ? s[1] : [{}]), s[0]); });
+  XLSX.writeFile(wb, 'funGIS_data_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+};
+
+// ================= start =================
+renderLayerBtns();
+if (MOCK || (session && session.admin)) load();
+else { $('main').style.display = 'none'; $('gate').style.display = 'block'; }
+
+// ---- local test data (?mock=1) ----
+function mockApi(b) {
+  if (b.action === 'track') { var v = mockApi.d.visits.filter(function (x) { return x.visit_id === b.visit_id; })[0], c = v.cell.center, pts = [];
+    for (var i = 0; i < 40; i++) pts.push([c[0] + Math.sin(i / 4) * 0.00022, c[1] + Math.cos(i / 5) * 0.00025 + i * 0.000003]); return { ok:true, points:pts }; }
+  if (b.action === 'photo') return { ok:true, data:'' };
+  if (b.action === 'adminSetUser') return { ok:true };
+  if (mockApi.d) return mockApi.d;
+  var users = [{ email:'nitzanbs@gri.org.il', role:'expert', status:'approved', access:'all' }, { email:'surveyor1@example.org', role:'expert', status:'approved', access:'own' },
+               { email:'citizen1@example.org', role:'citizen', status:'approved', access:'own' }, { email:'new@example.org', role:'citizen', status:'pending', access:'own' }];
+  var spots = [[32.66, 34.97, 'carmel'], [32.68, 34.98, 'carmel'], [32.986, 35.50, 'near'], [32.99, 35.505, 'drop'], [32.72, 35.10, 'near']];
+  var taxa = ['', 'Suillus', 'Lactarius', '', 'Russula', 'Amanita', ''], visits = [];
+  for (var i = 0; i < 18; i++) {
+    var s = spots[i % spots.length], u = users[i % 3], lat = s[0] + (i % 4) * 0.004, lon = s[1] + (i % 3) * 0.004, h = 30 / 110574, w = 30 / 93800;
+    var obs = []; for (var j = 0; j < (i * 7) % 6; j++) obs.push({ obs_id:'o' + i + j, lat:lat + (j - 2) * 0.00008, lon:lon + (j % 3 - 1) * 0.0001,
+      count:1 + (i + j) % 4, taxon_name:taxa[(i + j) % taxa.length], label:taxa[(i + j) % taxa.length] || 'מין א', photos:['top', 'under', 'habitat'] });
+    visits.push({ visit_id:'v' + i, email:u.email, who:u.email, role:u.role, mode:s[2], level:s[2] === 'carmel' ? ['hot', 'middle', 'cold'][i % 3] : 'none',
+      cell_id:(s[2] === 'carmel' ? 'C' : 'T') + i, start:'2026-1' + (i % 2) + '-' + (10 + i % 18) + 'T09:00:00Z', minutes:[20, 13, 17, 20, 8][i % 5],
+      quality:1 + i % 5, nothing_found:obs.length ? 0 : 1, observations:obs, n_track:40,
+      cell:{ center:[lat, lon], corners:[[lat - h, lon - w], [lat - h, lon + w], [lat + h, lon + w], [lat + h, lon - w]], slope:12 } });
+  }
+  users.forEach(function (u) { u.n_visits = visits.filter(function (v) { return v.email === u.email; }).length; });
+  return (mockApi.d = { ok:true, users:users, visits:visits });
+}
+</script>
+</body>
+</html>
