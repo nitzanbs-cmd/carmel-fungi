@@ -944,7 +944,7 @@ function openHistory() {
   $('histList').innerHTML = '<p class="muted">טוען...</p>';
   api('history').then(function (r) {
     var mine = r.visits.filter(function (v) { return v.mine; });
-    drawVisits(histMap, histLayers, r.visits, function (v) { return v.mine ? '#2f6b3a' : '#8a5cc2'; }, true);
+    drawVisits(histMap, histLayers, r.visits, function (v) { return v.mine ? '#b0b0b0' : '#8a5cc2'; }, true);
     $('histList').innerHTML = (r.access === 'all' ? '<p class="muted">ירוק: שלך · סגול: של משתתפים אחרים</p>' : '') +
       (mine.length ? mine.map(function (v) {
         return '<div class="cellrow"><div class="grow">' + new Date(v.start).toLocaleDateString('he-IL') + ' · דירוג ' + v.quality + ' · ' +
