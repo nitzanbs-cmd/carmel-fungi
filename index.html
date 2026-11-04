@@ -436,7 +436,7 @@ $('btnConsent').onclick = function () {
 };
 function afterLogin() {
   if (!session.consent) { show('sConsent'); return; }
-  startGps(); goHome(true);   // every opening starts with the choice
+  startGps(); goHome(!hasOpenKit());   // the choice only when there is no open kit (coming back from navigation keeps the kit)
   api('me').then(function (r) { session.access = r.access; session.admin = r.admin; store('session', session);
     $('mAdmin').classList.toggle('hidden', !r.admin); }).catch(function () {});
 }
@@ -446,6 +446,7 @@ var kit = store('kit') || { cells:[] }, kitLayers = [];
 var visitedIds = store('visitedIds') || {};   // cells reported from this phone (also while still in the outbox)
 
 var choosing = false;   // the choice screen is shown instead of the kit
+function hasOpenKit() { return !!(kit.cells && kit.cells.some(function (c) { return !(visitedIds[c.id] || c.done); })); }
 function goHome(withChoice) {
   choosing = !!withChoice;
   show('sHome');
@@ -480,8 +481,10 @@ function drawKit() {
   });
   var allDone = kit.cells.every(function (c) { return visitedIds[c.id] || c.done; });
   if (allDone) html += '<p style="margin-top:10px">סיימת את כל 3 התאים. תודה!</p><button id="btnDraw">ערכה חדשה</button>';
+  else html += '<button class="second small" id="btnOtherKit" style="margin-top:10px">ערכה אחרת</button>';
   sheet.innerHTML = html;
   if (allDone) $('btnDraw').onclick = function () { choosing = true; showChoice(); };
+  else $('btnOtherKit').onclick = function () { choosing = true; showChoice(); };
   sheet.querySelectorAll('[data-go]').forEach(function (b) { b.onclick = function () { arrive(kit.cells[Number(b.dataset.go)], Number(b.dataset.go) + 1); }; });
   sheet.querySelectorAll('[data-rep]').forEach(function (b) { b.onclick = function () { replaceCell(b.dataset.rep); }; });
   if (bounds.isValid()) homeMap.fitBounds(bounds.pad(0.3));
@@ -853,7 +856,7 @@ function openHistory() {
 }
 $('mHistory').onclick = openHistory;
 // ================= choice of kit: Carmel research, or try your luck near you =================
-var NEAR_KM = 2;   // walking distance: about half an hour to the farthest cell
+var NEAR_KM = 0.5;   // close by: a few minutes' walk to each cell
 function showChoice() {
   kitLayers.forEach(function (l) { homeMap.removeLayer(l); }); kitLayers = [];
   var open = kit.cells && kit.cells.some(function (c) { return !(visitedIds[c.id] || c.done); });
