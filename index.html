@@ -260,7 +260,7 @@ function forget(k) { try { localStorage.removeItem(k); } catch (e) {} }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]; }); }
 var ERRORS = { wrong_code:'הקוד שגוי', code_expired:'עדיין לא נשלח קוד. לחצו שליחה', too_many_tries:'יותר מדי ניסיונות. לחצו על שליחת הקוד שוב',
                not_approved:'הבקשה עדיין לא אושרה', signed_out:'צריך להתחבר מחדש', blocked:'הגישה שלך הוגבלה',
-               bad_email:'המייל לא תקין', map_check_failed:'שרת המפה לא ענה, ולכן לא הוגרלו תאים. נסו שוב בעוד דקה', no_room_for_test_cell:'לא נמצא מספיק שטח פתוח לידך', no_location:'אין מיקום GPS', kit_not_finished:'יש עדיין תאים פתוחים בערכה', offline:'אין קליטה כרגע' };
+               bad_email:'המייל לא תקין', no_forest_near:'אין יער של קק"ל עד 3 ק"מ ממך. נסו כשאתם בתוך יער או לידו', map_check_failed:'שרת המפה לא ענה, ולכן לא הוגרלו תאים. נסו שוב בעוד דקה', no_room_for_test_cell:'לא נמצא מספיק שטח פתוח לידך', no_location:'אין מיקום GPS', kit_not_finished:'יש עדיין תאים פתוחים בערכה', offline:'אין קליטה כרגע' };
 
 // ================= API (Google, or a local mock) =================
 var session = store('session') || null;   // {email, token, access, admin, consent}
@@ -865,7 +865,7 @@ function showChoice() {
     (open ? '<p class="muted">יש לך ערכה פתוחה: אפשר להמשיך בה (כפתור למטה), או לבחור חדשה במקומה.</p>' : '') +
     '<div class="card"><b>ניטור ביער חוף הכרמל</b><p class="muted" style="margin:4px 0 0">חלק מהמחקר: 3 תאים מוגרלים ביער</p>' +
     '<button id="btnCarmel">הגרלת 3 תאים בחוף הכרמל</button></div>' +
-    '<div class="card"><b>נסו את מזלכם קרוב אליכם</b><p class="muted" style="margin:4px 0 0">3 תאים מוגרלים סביב המיקום שלך, עד ' + NEAR_KM * 1000 + ' מטר ממך</p>' +
+    '<div class="card"><b>נסו את מזלכם קרוב אליכם</b><p class="muted" style="margin:4px 0 0">3 תאים ביער של קק"ל הקרוב, עד ' + NEAR_KM * 1000 + ' מטר ממך (אם אין יער קרוב: עד 3 ק"מ)</p>' +
     '<button id="btnNear">הגרלת 3 תאים לידי</button></div>' +
     (open ? '<button class="second" id="btnChoiceBack">המשך לערכה הפתוחה</button>' : '');
   $('btnCarmel').onclick = function () { newKit(); };
@@ -875,9 +875,9 @@ function showChoice() {
 function nearKit() {
   choosing = false;
   if (!lastFix) { toast('מחכה למיקום GPS... לחצו על ◎ במפה'); return; }
-  toast('בודק במפה איפה יש שטח פתוח... עד חצי דקה', 30000);
+  toast('מחפש יער קרוב...', 15000);
   api('testKit', { lat:lastFix.lat, lon:lastFix.lon, km:NEAR_KM }).then(function (r) {
-    kit = r; store('kit', r); visitedIds = {}; store('visitedIds', visitedIds); drawKit(); toast(r.checked ? 'נוצרו 3 תאים בשטח פתוח לידך' : 'נוצרו 3 תאים לידך. המפה לא נבדקה הפעם, ותא שנופל על שטח בנוי או כביש מחליפים', 6000);
+    kit = r; store('kit', r); visitedIds = {}; store('visitedIds', visitedIds); drawKit(); toast(r.radius_m > NEAR_KM * 1000 ? 'אין יער ממש לידך, ולכן התאים עד ' + (r.radius_m / 1000) + ' ק"מ ממך' : 'נוצרו 3 תאים ביער לידך', 6000);
   }).catch(function (e) { toast(errText(e)); });
 }
 $('mTestKit').onclick = function () { $('menu').classList.add('hidden'); choosing = true; showChoice(); };
