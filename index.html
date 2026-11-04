@@ -403,9 +403,57 @@ function makeMap(id) {
     return b;
   } });
   new Locate().addTo(m);
+  addContours(m);
   return m;
 }
 function cellPolygon(c, style) { return L.polygon(c.corners, style); }
+// ================= contour lines, carried on the phone (tools\build_contours.py) =================
+// contours.json: [[elevation, [[lat, lon], ...]], ...], every 10 m, inside KKL / RTG areas from Be'er Sheva northward
+var CONTOURS = null, contoursLoading = null, contoursOn = true;
+try { contoursOn = localStorage.getItem('contours') !== '0'; } catch (e) {}
+function loadContours() {
+  if (!contoursLoading) contoursLoading = fetch('contours.json').then(function (r) { return r.json(); }).then(function (a) {
+    CONTOURS = a.map(function (l) {
+      var b = [90, 180, -90, -180];
+      l[1].forEach(function (p) { b[0] = Math.min(b[0], p[0]); b[1] = Math.min(b[1], p[1]); b[2] = Math.max(b[2], p[0]); b[3] = Math.max(b[3], p[1]); });
+      return { e:l[0], pts:l[1], b:b };
+    });
+    return CONTOURS;
+  }).catch(function () { contoursLoading = null; return null; });
+  return contoursLoading;
+}
+function addContours(m) {
+  var group = L.layerGroup().addTo(m), rnd = L.canvas({ padding:0.2 });
+  function redraw() {
+    group.clearLayers();
+    if (!contoursOn || !CONTOURS || m.getZoom() < 14) return;   // zoomed out: too many lines to read anyway
+    var v = m.getBounds().pad(0.2), s = v.getSouth(), n = v.getNorth(), w = v.getWest(), e = v.getEast();
+    CONTOURS.forEach(function (l) {
+      if (l.b[2] < s || l.b[0] > n || l.b[3] < w || l.b[1] > e) return;
+      var major = l.e % 50 === 0;
+      var pl = L.polyline(l.pts, { renderer:rnd, color:major ? '#ffe9b0' : '#fff3d6', weight:major ? 1.8 : 0.9,
+                                   opacity:major ? 0.9 : 0.6, interactive:major });
+      if (major) pl.bindTooltip(l.e + ' מ\'', { sticky:true });
+      group.addLayer(pl);
+    });
+  }
+  m.on('moveend', redraw);
+  m._redrawContours = redraw;
+  var Btn = L.Control.extend({ options:{ position:'bottomright' }, onAdd:function () {
+    var b = L.DomUtil.create('button', 'locate'); b.innerHTML = '⛰'; b.title = 'קווי גובה';
+    b.style.opacity = contoursOn ? 1 : 0.5;
+    L.DomEvent.disableClickPropagation(b);
+    b.onclick = function () {
+      contoursOn = !contoursOn; try { localStorage.setItem('contours', contoursOn ? '1' : '0'); } catch (e) {}
+      document.querySelectorAll('.locate').forEach(function (x) { if (x.innerHTML === '⛰') x.style.opacity = contoursOn ? 1 : 0.5; });
+      [homeMap, searchMap, histMap, adminMap].forEach(function (mm) { if (mm && mm._redrawContours) mm._redrawContours(); });
+      if (contoursOn && m.getZoom() < 14) toast('קווי הגובה מופיעים כשמתקרבים במפה');
+    };
+    return b;
+  } });
+  new Btn().addTo(m);
+  loadContours().then(redraw);
+}
 var shroomLayers = [];   // a small mushroom where each observation was photographed
 function shroomMarker(lat, lon) {
   return L.marker([lat, lon], { interactive:false, keyboard:false,
