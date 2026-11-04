@@ -272,7 +272,7 @@ function forget(k) { try { localStorage.removeItem(k); } catch (e) {} }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]; }); }
 var ERRORS = { wrong_code:'הקוד שגוי', code_expired:'עדיין לא נשלח קוד. לחצו שליחה', too_many_tries:'יותר מדי ניסיונות. לחצו על שליחת הקוד שוב',
                not_approved:'הבקשה עדיין לא אושרה', signed_out:'צריך להתחבר מחדש', blocked:'הגישה שלך הוגבלה',
-               bad_email:'המייל לא תקין', no_forest_near:'אין יער של קק"ל עד 3 ק"מ ממך. נסו כשאתם בתוך יער או לידו', map_check_failed:'שרת המפה לא ענה, ולכן לא הוגרלו תאים. נסו שוב בעוד דקה', no_room_for_test_cell:'לא נמצא מספיק שטח פתוח לידך', no_location:'אין מיקום GPS', kit_not_finished:'יש עדיין תאים פתוחים בערכה', offline:'אין קליטה כרגע' };
+               bad_email:'המייל לא תקין', no_forest_near:'אין יער של קק"ל עד 3 ק"מ ממך. נסו כשאתם בתוך יער או לידו', map_check_failed:'שרת המפה לא ענה, ולכן לא הוגרלו תאים. נסו שוב בעוד דקה', no_room_for_test_cell:'לא נמצא מספיק שטח פתוח לידך', no_location:'אין מיקום GPS', kit_not_finished:'יש עדיין תאים פתוחים בערכה', offline:'אין קליטה כרגע', no_replacement:'לא נמצא תא מתאים להחלפה', cliff_here:'כאן תלול מדי (צוק). זזים קצת למקום מתון יותר ומנסים שוב', too_steep_near:'השטח לידך תלול מדי. נסו ממקום אחר' };
 
 // ================= API (Google, or a local mock) =================
 var session = store('session') || null;   // {email, token, access, admin, consent}
@@ -598,8 +598,12 @@ function drawKit() {
       (c.slope >= STEEP_DEG ? '<br><span style="color:#b3261e;font-weight:700">⚠ שיפוע תלול, כ-' + Math.round(c.slope) + '°. זהירות</span>' : '') +
       '<br><a href="https://www.google.com/maps/dir/?api=1&destination=' + c.center[0] + ',' + c.center[1] +
       '" target="_blank">ניווט לתא</a></div>' +
-      (done ? '' : '<button class="small second" data-rep="' + c.id + '">החלפה</button>' +
-                   '<button class="small" data-go="' + i + '">הגעתי</button>') + '</div>';
+      (done ? '' : repFor === c.id
+        ? '<button class="small" data-rs="' + c.id + '">⛰ שיפוע מסוכן</button>' +
+          '<button class="small second" data-ro="' + c.id + '">סיבה אחרת</button>' +
+          '<button class="small second" data-rc="1">ביטול</button>'
+        : '<button class="small second" data-rep="' + c.id + '">החלפה</button>' +
+          '<button class="small" data-go="' + i + '">הגעתי</button>') + '</div>';
   });
   var allDone = kit.cells.every(function (c) { return visitedIds[c.id] || c.done; });
   if (allDone) html += '<p style="margin-top:10px">סיימת את כל התאים. תודה!</p><button id="btnDraw">ערכה חדשה</button>';
@@ -608,7 +612,10 @@ function drawKit() {
   if (allDone) $('btnDraw').onclick = function () { choosing = true; showChoice(); };
   else $('btnOtherKit').onclick = function () { choosing = true; showChoice(); };
   sheet.querySelectorAll('[data-go]').forEach(function (b) { b.onclick = function () { arrive(kit.cells[Number(b.dataset.go)], Number(b.dataset.go) + 1); }; });
-  sheet.querySelectorAll('[data-rep]').forEach(function (b) { b.onclick = function () { replaceCell(b.dataset.rep); }; });
+  sheet.querySelectorAll('[data-rep]').forEach(function (b) { b.onclick = function () { repFor = b.dataset.rep; drawKit(); }; });
+  sheet.querySelectorAll('[data-rs]').forEach(function (b) { b.onclick = function () { replaceCell(b.dataset.rs, 'slope'); }; });
+  sheet.querySelectorAll('[data-ro]').forEach(function (b) { b.onclick = function () { replaceCell(b.dataset.ro); }; });
+  sheet.querySelectorAll('[data-rc]').forEach(function (b) { b.onclick = function () { repFor = null; drawKit(); }; });
   if (bounds.isValid()) homeMap.fitBounds(bounds.pad(0.3));
 }
 function newKit() {
@@ -619,11 +626,15 @@ function newKit() {
       toast(errText(e));
     });
 }
-function replaceCell(id) {
-  var reason = prompt('למה להחליף את התא? (למשל: לא נגיש, רחוק מדי, שטח סגור)');
+var repFor = null;   // the cell whose replace choices are open
+function replaceCell(id, reason) {
+  if (!reason) reason = prompt('למה להחליף את התא? (למשל: לא נגיש, רחוק מדי, שטח סגור)');
   if (reason === null) return;
-  api('replaceCell', { cell_id:id, reason:reason }).then(function (r) { kit = r; store('kit', r); drawKit(); toast('התא הוחלף'); })
-    .catch(function (e) { toast(errText(e)); });
+  repFor = null;
+  api('replaceCell', { cell_id:id, reason:reason }).then(function (r) {
+    kit = r; store('kit', r); drawKit();
+    toast(reason === 'slope' ? 'התא הוחלף בתא הקרוב ביותר שפחות תלול' : 'התא הוחלף');
+  }).catch(function (e) { drawKit(); toast(errText(e)); });
 }
 $('btnMenu').onclick = function () { $('menu').classList.toggle('hidden'); };
 $('btnOutbox').onclick = function () {
@@ -1027,15 +1038,15 @@ function drawNearCenters(lat, lon) {
   var out = [];
   [NEAR_KM * 1000, 1500, 3000].some(function (R) {
     out = [];
-    for (var i = 0; i < 4000 && out.length < 3; i++) {
+    for (var i = 0; i < 4000 && out.length < 7; i++) {   // 7: spares, the server drops cliffs and extra steep cells
       var d = 60 + Math.sqrt(Math.random()) * (R - 60), a = Math.random() * 2 * Math.PI;
       var cLat = lat + d * Math.sin(a) / M_LAT, cLon = lon + d * Math.cos(a) / mLon(lat);
       var apart = out.every(function (p) { return Math.max(Math.abs(p[0] - cLat) * M_LAT, Math.abs(p[1] - cLon) * mLon(lat)) > 70; });
       if (apart && cellOk(cLat, cLon)) out.push([+cLat.toFixed(7), +cLon.toFixed(7)]);
     }
-    out.radius = R; return out.length === 3;
+    out.radius = R; return out.length >= 3;
   });
-  return out.length === 3 ? out : null;
+  return out.length >= 3 ? out : null;
 }
 function saveTestKit(params, msg) {
   toast('שומר את התאים...', 15000);
@@ -1191,7 +1202,7 @@ var Mock = (function () {
                    n_visits:S.visits.filter(function (v) { return v.email === e; }).length, n_obs:S.obs.filter(function (o) { return o.email === e; }).length }; }) }; },
     testKit:function (b) { auth(b);
       S.kits.forEach(function (k) { if (k.email === b.email && k.status === 'active') k.status = 'replaced'; });
-      (b.centers || [0, 1, 2]).forEach(function (cc, i) {
+      (b.centers ? b.centers.slice(0, b.mode === 'drop' ? 1 : 3) : [0, 1, 2]).forEach(function (cc, i) {
         var lv = 'none', a = i * 1.26, d = 150 + 30 * i, lat = b.lat + d * Math.sin(a) / 110574, lon = b.lon + d * Math.cos(a) / 93800;
         if (b.centers) { lat = cc[0]; lon = cc[1]; }
         var h = 30 / 110574, w = 30 / 93800, id = 'T' + Date.now() + '_' + i;
