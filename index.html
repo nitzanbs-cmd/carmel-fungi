@@ -141,6 +141,7 @@
   <div id="menu" class="card hidden" style="position:absolute;top:52px;left:8px;z-index:2000;width:200px">
     <button class="second small" style="width:100%;margin:4px 0" id="mHistory">ההיסטוריה שלי</button>
     <button class="second small hidden" style="width:100%;margin:4px 0" id="mAdmin">לוח בקרה</button>
+    <a class="hidden" id="mDash" href="dashboard.html" target="_blank"><button class="second small" style="width:100%;margin:4px 0">דשבורד המחקר (מחשב)</button></a>
     <button class="second small hidden" style="width:100%;margin:4px 0" id="mTestKit">איפה מחפשים היום?</button>
     <button class="second small" style="width:100%;margin:4px 0" id="mLogout">התנתקות</button>
     <p class="credit" style="margin:8px 0 0">funGIS · ניצן בר שמואל<br>מכון שמיר למחקר</p>
@@ -265,6 +266,18 @@ function toast(msg, ms) {
   var t = $('toast'); t.textContent = msg; t.style.display = 'block';
   clearTimeout(toast._t); toast._t = setTimeout(function () { t.style.display = 'none'; }, ms || 3000);
 }
+// reCAPTCHA v3 on sign-up: invisible, works once the site key is filled in (and the secret is set on the Google side)
+var RECAPTCHA_SITE_KEY = '';
+function recaptchaToken() {
+  if (!RECAPTCHA_SITE_KEY || MOCK) return Promise.resolve('');
+  return new Promise(function (ok) {
+    function run() { grecaptcha.ready(function () {
+      grecaptcha.execute(RECAPTCHA_SITE_KEY, { action:'signup' }).then(ok, function () { ok(''); }); }); }
+    if (window.grecaptcha) return run();
+    var s = document.createElement('script'); s.src = 'https://www.google.com/recaptcha/api.js?render=' + RECAPTCHA_SITE_KEY;
+    s.onload = run; s.onerror = function () { ok(''); }; document.head.appendChild(s);
+  });
+}
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 function fmt(s) { s = Math.max(0, Math.ceil(s)); return Math.floor(s / 60) + ':' + ('0' + s % 60).slice(-2); }
 function store(k, v) { try { if (v === undefined) return JSON.parse(localStorage.getItem(k)); localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; } }
@@ -272,7 +285,7 @@ function forget(k) { try { localStorage.removeItem(k); } catch (e) {} }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]; }); }
 var ERRORS = { wrong_code:'הקוד שגוי', code_expired:'עדיין לא נשלח קוד. לחצו שליחה', too_many_tries:'יותר מדי ניסיונות. לחצו על שליחת הקוד שוב',
                not_approved:'הבקשה עדיין לא אושרה', signed_out:'צריך להתחבר מחדש', blocked:'הגישה שלך הוגבלה',
-               bad_email:'המייל לא תקין', no_forest_near:'אין יער של קק"ל עד 3 ק"מ ממך. נסו כשאתם בתוך יער או לידו', map_check_failed:'שרת המפה לא ענה, ולכן לא הוגרלו תאים. נסו שוב בעוד דקה', no_room_for_test_cell:'לא נמצא מספיק שטח פתוח לידך', no_location:'אין מיקום GPS', kit_not_finished:'יש עדיין תאים פתוחים בערכה', offline:'אין קליטה כרגע', no_replacement:'לא נמצא תא מתאים להחלפה', cliff_here:'כאן תלול מדי (צוק). זזים קצת למקום מתון יותר ומנסים שוב', too_steep_near:'השטח לידך תלול מדי. נסו ממקום אחר' };
+               bad_email:'המייל לא תקין', no_forest_near:'אין יער של קק"ל עד 3 ק"מ ממך. נסו כשאתם בתוך יער או לידו', map_check_failed:'שרת המפה לא ענה, ולכן לא הוגרלו תאים. נסו שוב בעוד דקה', no_room_for_test_cell:'לא נמצא מספיק שטח פתוח לידך', no_location:'אין מיקום GPS', kit_not_finished:'יש עדיין תאים פתוחים בערכה', offline:'אין קליטה כרגע', no_replacement:'לא נמצא תא מתאים להחלפה', robot_check:'בדיקת האבטחה נכשלה. נסו שוב בעוד רגע', cliff_here:'כאן תלול מדי (צוק). זזים קצת למקום מתון יותר ומנסים שוב', too_steep_near:'השטח לידך תלול מדי. נסו ממקום אחר' };
 
 // ================= API (Google, or a local mock) =================
 var session = store('session') || null;   // {email, token, access, admin, consent}
@@ -526,7 +539,7 @@ $('btnRequest').onclick = function () {
   var email = $('loginEmail').value.trim().toLowerCase();
   if (!/^\S+@\S+\.\S+$/.test(email)) { $('loginMsg').textContent = 'המייל לא תקין'; return; }
   $('btnRequest').disabled = true; $('loginMsg').textContent = '';
-  api('requestJoin', { email:email }).then(function (r) {
+  recaptchaToken().then(function (tok) { return api('requestJoin', { email:email, recaptcha:tok }); }).then(function (r) {
     store('pendingEmail', email);
     $('loginPending').classList.toggle('hidden', r.state !== 'pending');
     $('loginCodeBox').classList.remove('hidden');
@@ -571,7 +584,7 @@ function hasOpenKit() { return !!(kit.cells && kit.cells.some(function (c) { ret
 function goHome(withChoice) {
   choosing = !!withChoice;
   show('sHome');
-  $('mAdmin').classList.toggle('hidden', !session.admin);
+  $('mAdmin').classList.toggle('hidden', !session.admin); $('mDash').classList.toggle('hidden', !session.admin);
   $('mTestKit').classList.remove('hidden');
   if (!homeMap) { homeMap = makeMap('homeMap'); drawAreas(homeMap); }
   refreshOutbox(); drawKit(); loadKit();
