@@ -78,9 +78,18 @@
             align-items:center; justify-content:center; padding:16px; }
   .viewer img { max-width:100%; max-height:70vh; border-radius:8px; }
   .viewer .cap { color:#fff; margin:10px 0; text-align:center; }
+  .credit { font-size:12px; color:#777; text-align:center; margin-top:24px; }
+  .shroom { font-size:15px; line-height:15px; opacity:.85; text-shadow:0 0 2px #fff; }
+  #celebrate { position:fixed; inset:0; z-index:5000; pointer-events:none; display:none; }
+  #celebrate .msg { position:absolute; top:36%; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:28px; font-weight:800;
+                    color:#fff; background:rgba(30,60,35,.88); padding:16px 26px; border-radius:18px; box-shadow:0 4px 18px rgba(0,0,0,.4); }
+  #celebrate i { position:absolute; top:-12px; width:9px; height:14px; border-radius:2px; animation:fall linear forwards; }
+  @keyframes fall { to { transform:translateY(110vh) rotate(720deg); } }
 </style>
 </head>
 <body>
+
+<div id="celebrate"><div class="msg">השלמת את המסלול! 🍄</div></div>
 
 <!-- ============ 1. login ============ -->
 <section id="sLogin" class="screen hidden">
@@ -100,6 +109,7 @@
       <button id="btnResend" class="second">שליחת הקוד שוב למייל</button>
     </div>
     <p class="muted" id="loginMsg" style="margin-top:12px"></p>
+    <p class="credit">funGIS פותחה על ידי ניצן בר שמואל, מכון שמיר למחקר</p>
   </div>
 </section>
 
@@ -133,6 +143,7 @@
     <button class="second small hidden" style="width:100%;margin:4px 0" id="mAdmin">לוח בקרה</button>
     <button class="second small hidden" style="width:100%;margin:4px 0" id="mTestKit">בחירת ערכה חדשה</button>
     <button class="second small" style="width:100%;margin:4px 0" id="mLogout">התנתקות</button>
+    <p class="credit" style="margin:8px 0 0">funGIS · ניצן בר שמואל<br>מכון שמיר למחקר</p>
   </div>
   <div id="homeMap" class="map"></div>
   <div class="sheet" id="homeSheet"></div>
@@ -395,6 +406,67 @@ function makeMap(id) {
   return m;
 }
 function cellPolygon(c, style) { return L.polygon(c.corners, style); }
+var shroomLayers = [];   // a small mushroom where each observation was photographed
+function shroomMarker(lat, lon) {
+  return L.marker([lat, lon], { interactive:false, keyboard:false,
+    icon:L.divIcon({ className:'shroom', html:'🍄', iconSize:[15, 15], iconAnchor:[7, 7] }) });
+}
+
+// ================= KKL forests and Nature and Parks Authority (RTG) areas, carried on the phone =================
+// areas.json (tools\compact_layers.js): [{ n: name, k: 'kkl' | 'rtg', r: [[[lat, lon], ...], ...] }]
+var AREAS = null, areasLoading = null;
+function loadAreas() {
+  if (!areasLoading) areasLoading = fetch('areas.json').then(function (r) { return r.json(); }).then(function (a) {
+    a.forEach(function (x) {   // bounding box per area, so a point test only looks at the few areas around it
+      var b = [90, 180, -90, -180];
+      x.r.forEach(function (ring) { ring.forEach(function (p) {
+        b[0] = Math.min(b[0], p[0]); b[1] = Math.min(b[1], p[1]); b[2] = Math.max(b[2], p[0]); b[3] = Math.max(b[3], p[1]); }); });
+      x.b = b;
+    });
+    AREAS = a; return a;
+  }).catch(function () { areasLoading = null; return null; });
+  return areasLoading;
+}
+function inArea(x, lat, lon) {   // even-odd over all rings of one area (holes count out)
+  if (lat < x.b[0] || lat > x.b[2] || lon < x.b[1] || lon > x.b[3]) return false;
+  var n = 0; x.r.forEach(function (ring) { if (insidePoly(lat, lon, ring)) n++; });
+  return n % 2 === 1;
+}
+function areaAt(lat, lon) {   // { kkl: forest name or null, rtg: true / false }
+  var o = { kkl:null, rtg:false };
+  (AREAS || []).forEach(function (x) {
+    if ((x.k === 'kkl' && o.kkl === null) || (x.k === 'rtg' && !o.rtg)) if (inArea(x, lat, lon)) { if (x.k === 'kkl') o.kkl = x.n || 'יער קק"ל'; else o.rtg = true; }
+  });
+  return o;
+}
+function isExpert() { return session && (session.role === 'expert' || session.admin); }
+// may this person search here? citizens: inside KKL and not in an RTG area (no leaving the trails there)
+function pointOk(lat, lon) {
+  var a = areaAt(lat, lon);
+  return isExpert() ? (!!a.kkl || a.rtg) : (!!a.kkl && !a.rtg);
+}
+function cellOk(lat, lon) {   // the whole 60 m cell: centre and 4 corners
+  var dy = 30 / M_LAT, dx = 30 / mLon(lat);
+  return [[0, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]].every(function (s) { return pointOk(lat + s[0] * dy, lon + s[1] * dx); });
+}
+var RTG_WHY = 'זה שטח בניהול רשות הטבע והגנים. בשמורות טבע אסור לרדת מהשבילים, ולכן funGIS לא שולחת לכאן מחפשים. ' +
+              'סוקרים מומחים מגיעים לכאן בתיאום ובאישור מיוחד.';
+var areaLayers = [], areaCanvas_ = null;
+function areaCanvas() { return areaCanvas_ || (areaCanvas_ = L.canvas({ padding:0.3 })); }   // many vertices: canvas is much faster than SVG
+function drawAreas(m) {
+  loadAreas().then(function (a) {
+    if (!a || m._areasDrawn) return; m._areasDrawn = true;
+    a.forEach(function (x) {
+      var p = L.polygon(x.r, x.k === 'kkl'
+        ? { renderer:areaCanvas(), color:'#7CFC00', weight:1.5, fillOpacity:0.04 }
+        : { renderer:areaCanvas(), color:'#ff9800', weight:2, fillColor:'#ff9800', fillOpacity:isExpert() ? 0.05 : 0.18, dashArray:'6 4' });
+      p.bindPopup(x.k === 'kkl' ? '<b>' + esc(x.n || 'יער קק"ל') + '</b><br>יער קק"ל' :
+        '<b>שטח רט"ג</b><br>' + (isExpert() ? 'פתוח לסוקרים מומחים בלבד' : RTG_WHY));
+      p.addTo(m); areaLayers.push(p);
+    });
+    m.eachLayer(function (l) { if (l.bringToFront && kitLayers.indexOf(l) >= 0) l.bringToFront(); });
+  });
+}
 
 // ================= 1. login =================
 function startLogin() {
@@ -438,7 +510,7 @@ $('btnConsent').onclick = function () {
 function afterLogin() {
   if (!session.consent) { show('sConsent'); return; }
   startGps(); goHome(!hasOpenKit());   // the choice only when there is no open kit (coming back from navigation keeps the kit)
-  api('me').then(function (r) { session.access = r.access; session.admin = r.admin; store('session', session);
+  api('me').then(function (r) { session.access = r.access; session.admin = r.admin; session.role = r.role; store('session', session);
     $('mAdmin').classList.toggle('hidden', !r.admin); }).catch(function () {});
 }
 
@@ -453,7 +525,7 @@ function goHome(withChoice) {
   show('sHome');
   $('mAdmin').classList.toggle('hidden', !session.admin);
   $('mTestKit').classList.remove('hidden');
-  if (!homeMap) homeMap = makeMap('homeMap');
+  if (!homeMap) { homeMap = makeMap('homeMap'); drawAreas(homeMap); }
   refreshOutbox(); drawKit(); loadKit();
 }
 function loadKit() {
@@ -482,7 +554,7 @@ function drawKit() {
                    '<button class="small" data-go="' + i + '">הגעתי</button>') + '</div>';
   });
   var allDone = kit.cells.every(function (c) { return visitedIds[c.id] || c.done; });
-  if (allDone) html += '<p style="margin-top:10px">סיימת את כל 3 התאים. תודה!</p><button id="btnDraw">ערכה חדשה</button>';
+  if (allDone) html += '<p style="margin-top:10px">סיימת את כל התאים. תודה!</p><button id="btnDraw">ערכה חדשה</button>';
   else html += '<button class="second small" id="btnOtherKit" style="margin-top:10px">ערכה אחרת</button>';
   sheet.innerHTML = html;
   if (allDone) $('btnDraw').onclick = function () { choosing = true; showChoice(); };
@@ -569,8 +641,27 @@ function chime(notes, gap, wave) {
 }
 // place (leaving the cell) = high bell; time (offer to stop, time is up) = low soft 'ding-dong' in a different colour
 var SOUND = { start:[523, 659], exit:[880, 698],
-              offer:[392, 330, 392], end:[392, 330, 392, 0, 392, 330, 523], shutter:[1047] };
-var WAVE = { offer:'triangle', end:'triangle' };
+              offer:[392, 330, 392], end:[392, 330, 392, 0, 392, 330, 523], shutter:[1047],
+              tock:[1568], win:[523, 659, 784, 0, 659, 1047, 1047] };
+var WAVE = { offer:'triangle', end:'triangle', tock:'square' };
+// full 20 minutes with fungi: clock ticks in the last 3 seconds, then a victory tune and confetti
+var lastTock = -1;
+function finalCountdown(left) {
+  if (left > 3 || left <= 0 || !fungiFound()) return;
+  var s = Math.ceil(left); if (s === lastTock) return; lastTock = s; beep('tock'); buzz([40]);
+}
+function celebrate() {
+  var box = $('celebrate'), cols = ['#ffd54f', '#e53935', '#43a047', '#1e88e5', '#8e24aa', '#fb8c00'];
+  box.querySelectorAll('i').forEach(function (x) { x.remove(); });
+  for (var i = 0; i < 120; i++) {
+    var c = document.createElement('i');
+    c.style.left = Math.random() * 100 + 'vw'; c.style.background = cols[i % cols.length];
+    c.style.animationDuration = (2 + Math.random() * 2.5) + 's'; c.style.animationDelay = Math.random() * 0.8 + 's';
+    box.appendChild(c);
+  }
+  box.style.display = 'block';
+  setTimeout(function () { box.style.display = 'none'; }, 5000);
+}
 function beep(kind) { chime(SOUND[kind].filter(Boolean).length ? SOUND[kind] : [], kind === 'shutter' ? 0.1 : (WAVE[kind] ? 0.42 : 0.25), WAVE[kind]); }
 function buzz(p) { try { if (navigator.vibrate) navigator.vibrate(p); } catch (e) {} }
 function keepAwake() {
@@ -589,12 +680,14 @@ $('btnStart').onclick = function () {
   if (cellLayer) searchMap.removeLayer(cellLayer);
   cellLayer = cellPolygon(visit.cell, { color:'#ffd54f', weight:4, fillOpacity:.1 }).addTo(searchMap);
   searchMap.fitBounds(cellLayer.getBounds().pad(0.6));
-  trackLine.setLatLngs([]);
+  trackLine.setLatLngs([]); lastTock = -1;
+  shroomLayers.forEach(function (l) { searchMap.removeLayer(l); }); shroomLayers = [];
   $('obsCount').textContent = '0 תצפיות';
   clearInterval(tick);
   tick = setInterval(function () {
     var left = (endTime - Date.now()) / 1000;
     $('timer').textContent = fmt(left);
+    finalCountdown(left);
     if (left <= 0) endSearch(true); else offerEarlyEnd();
   }, 250);
   saveDraft();
@@ -637,7 +730,8 @@ function endSearch(timeUp) {
   running = false; clearInterval(tick);
   if (wakeLock) { wakeLock.release().catch(function () {}); wakeLock = null; }
   $('exitAlert').style.display = 'none';
-  if (timeUp) { beep('end'); buzz([300, 150, 300]); }
+  if (timeUp && fungiFound()) { setTimeout(function () { beep('win'); }, 600); buzz([100, 60, 100, 60, 300]); celebrate(); }
+  else if (timeUp) { beep('end'); buzz([300, 150, 300]); }
   visit.end = Date.now();
   saveDraft();
   showEnd(timeUp);
@@ -758,6 +852,7 @@ function saveObs() {
   if (!obs.taxon_name) obs.taxon_level = '';
   var unnamed = visit.observations.filter(function (o) { return !o.taxon_name; }).length;
   obs.label = obs.taxon_name || ('מין ' + HEB_LABELS[unnamed % HEB_LABELS.length]);
+  if (obs.lat && searchMap) shroomLayers.push(shroomMarker(obs.lat, obs.lon).addTo(searchMap));
   visit.observations.push(obs); obs = null;
   saveDraft();
   $('obsCount').textContent = visit.observations.length + ' תצפיות';
@@ -869,15 +964,58 @@ function showChoice() {
     '<div class="card"><b>ניטור ביער חוף הכרמל</b><p class="muted" style="margin:4px 0 0">חלק מהמחקר: 3 תאים מוגרלים ביער</p>' +
     '<button id="btnCarmel">הגרלת 3 תאים בחוף הכרמל</button></div>' +
     '<div class="card"><b>נסו את מזלכם קרוב אליכם</b><p class="muted" style="margin:4px 0 0">3 תאים ביער של קק"ל הקרוב, עד ' + NEAR_KM * 1000 + ' מטר ממך (אם אין יער קרוב: עד 3 ק"מ)</p>' +
-    '<button id="btnNear">הגרלת 3 תאים לידי</button></div>' +
+    '<button id="btnNear">הגרלת 3 תאים לידי</button>' +
+    '<button class="second" id="btnDrop">זרוק עליי: תא אחד שאני במרכז שלו</button>' +
+    (isExpert() ? '' : '<p class="muted" style="margin:6px 0 0;font-size:13px">🟧 שטחים כתומים במפה הם של רשות הטבע והגנים. ' +
+      'בשמורות טבע אסור לרדת מהשבילים, ולכן לא מגרילים בהם תאים.</p>') + '</div>' +
     (open ? '<button class="second" id="btnChoiceBack">המשך לערכה הפתוחה</button>' : '');
   $('btnCarmel').onclick = function () { newKit(); };
   $('btnNear').onclick = nearKit;
+  $('btnDrop').onclick = dropKit;
   if ($('btnChoiceBack')) $('btnChoiceBack').onclick = function () { choosing = false; drawKit(); };
+}
+// the phone draws the cells itself from the areas it carries; the server only saves them
+function drawNearCenters(lat, lon) {
+  var out = [];
+  [NEAR_KM * 1000, 1500, 3000].some(function (R) {
+    out = [];
+    for (var i = 0; i < 4000 && out.length < 3; i++) {
+      var d = 60 + Math.sqrt(Math.random()) * (R - 60), a = Math.random() * 2 * Math.PI;
+      var cLat = lat + d * Math.sin(a) / M_LAT, cLon = lon + d * Math.cos(a) / mLon(lat);
+      var apart = out.every(function (p) { return Math.max(Math.abs(p[0] - cLat) * M_LAT, Math.abs(p[1] - cLon) * mLon(lat)) > 70; });
+      if (apart && cellOk(cLat, cLon)) out.push([+cLat.toFixed(7), +cLon.toFixed(7)]);
+    }
+    out.radius = R; return out.length === 3;
+  });
+  return out.length === 3 ? out : null;
+}
+function saveTestKit(params, msg) {
+  toast('שומר את התאים...', 15000);
+  return api('testKit', params).then(function (r) {
+    kit = r; store('kit', r); visitedIds = {}; store('visitedIds', visitedIds); drawKit(); toast(msg, 6000);
+  }).catch(function (e) { toast(errText(e)); });
+}
+function dropKit() {
+  choosing = false;
+  if (!lastFix) { toast('מחכה למיקום GPS... לחצו על ◎ במפה'); return; }
+  loadAreas().then(function () {
+    if (AREAS && !isExpert() && areaAt(lastFix.lat, lastFix.lon).rtg) { choosing = true; alert(RTG_WHY + '\n\nאפשר לזרוק תא מחוץ לשטח הכתום.'); return; }
+    saveTestKit({ lat:lastFix.lat, lon:lastFix.lon, centers:[[+lastFix.lat.toFixed(7), +lastFix.lon.toFixed(7)]], mode:'drop' },
+                'נוצר תא אחד סביבך. את/ה במרכז שלו');
+  });
 }
 function nearKit() {
   choosing = false;
   if (!lastFix) { toast('מחכה למיקום GPS... לחצו על ◎ במפה'); return; }
+  loadAreas().then(function () {
+    if (!AREAS) { nearKitOnline(); return; }   // the layers did not load: the server looks them up
+    var c = drawNearCenters(lastFix.lat, lastFix.lon);
+    if (!c) { choosing = true; toast('אין יער קק"ל פתוח עד 3 ק"מ ממך' + (isExpert() ? '' : ' (שטחי רט"ג לא נכללים, כי שם אסור לרדת מהשבילים)') + '. אפשר "זרוק עליי"', 9000); return; }
+    saveTestKit({ lat:lastFix.lat, lon:lastFix.lon, centers:c, mode:'near' },
+                c.radius > NEAR_KM * 1000 ? 'אין יער ממש לידך, ולכן התאים עד ' + (c.radius / 1000) + ' ק"מ ממך' : 'נוצרו 3 תאים ביער לידך');
+  });
+}
+function nearKitOnline() {
   toast('מחפש יער קרוב...', 15000);
   api('testKit', { lat:lastFix.lat, lon:lastFix.lon, km:NEAR_KM }).then(function (r) {
     kit = r; store('kit', r); visitedIds = {}; store('visitedIds', visitedIds); drawKit(); toast(r.radius_m > NEAR_KM * 1000 ? 'אין יער ממש לידך, ולכן התאים עד ' + (r.radius_m / 1000) + ' ק"מ ממך' : 'נוצרו 3 תאים ביער לידך', 6000);
@@ -1005,8 +1143,9 @@ var Mock = (function () {
                    n_visits:S.visits.filter(function (v) { return v.email === e; }).length, n_obs:S.obs.filter(function (o) { return o.email === e; }).length }; }) }; },
     testKit:function (b) { auth(b);
       S.kits.forEach(function (k) { if (k.email === b.email && k.status === 'active') k.status = 'replaced'; });
-      ['hot', 'middle', 'cold'].forEach(function (lv, i) {
-        var a = i * 1.26, d = 150 + 30 * i, lat = b.lat + d * Math.sin(a) / 110574, lon = b.lon + d * Math.cos(a) / 93800;
+      (b.centers || [0, 1, 2]).forEach(function (cc, i) {
+        var lv = 'none', a = i * 1.26, d = 150 + 30 * i, lat = b.lat + d * Math.sin(a) / 110574, lon = b.lon + d * Math.cos(a) / 93800;
+        if (b.centers) { lat = cc[0]; lon = cc[1]; }
         var h = 30 / 110574, w = 30 / 93800, id = 'T' + Date.now() + '_' + i;
         cells.push({ id:id, level:lv, x:lon * 93800, y:lat * 110574, center:[lat, lon], corners:[[lat - h, lon - w], [lat - h, lon + w], [lat + h, lon + w], [lat + h, lon - w]] });
         S.kits.push({ email:b.email, kit_no:1, cell_id:id, level:lv, status:'active' });
