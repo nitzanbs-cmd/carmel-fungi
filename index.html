@@ -141,7 +141,7 @@
   <div id="menu" class="card hidden" style="position:absolute;top:52px;left:8px;z-index:2000;width:200px">
     <button class="second small" style="width:100%;margin:4px 0" id="mHistory">ההיסטוריה שלי</button>
     <button class="second small hidden" style="width:100%;margin:4px 0" id="mAdmin">לוח בקרה</button>
-    <button class="second small hidden" style="width:100%;margin:4px 0" id="mTestKit">בחירת ערכה חדשה</button>
+    <button class="second small hidden" style="width:100%;margin:4px 0" id="mTestKit">איפה מחפשים היום?</button>
     <button class="second small" style="width:100%;margin:4px 0" id="mLogout">התנתקות</button>
     <p class="credit" style="margin:8px 0 0">funGIS · ניצן בר שמואל<br>מכון שמיר למחקר</p>
   </div>
@@ -607,7 +607,7 @@ function drawKit() {
   });
   var allDone = kit.cells.every(function (c) { return visitedIds[c.id] || c.done; });
   if (allDone) html += '<p style="margin-top:10px">סיימת את כל התאים. תודה!</p><button id="btnDraw">ערכה חדשה</button>';
-  else html += '<button class="second small" id="btnOtherKit" style="margin-top:10px">ערכה אחרת</button>';
+  else html += '<button class="second small" id="btnOtherKit" style="margin-top:10px">איפה מחפשים היום?</button>';
   sheet.innerHTML = html;
   if (allDone) $('btnDraw').onclick = function () { choosing = true; showChoice(); };
   else $('btnOtherKit').onclick = function () { choosing = true; showChoice(); };
@@ -1018,16 +1018,17 @@ function showChoice() {
   kitLayers.forEach(function (l) { homeMap.removeLayer(l); }); kitLayers = [];
   var open = kit.cells && kit.cells.some(function (c) { return !(visitedIds[c.id] || c.done); });
   $('homeSheet').innerHTML =
-    '<h2 style="margin-bottom:6px">איפה מחפשים?</h2>' +
-    (open ? '<p class="muted">יש לך ערכה פתוחה: אפשר להמשיך בה (כפתור למטה), או לבחור חדשה במקומה.</p>' : '') +
-    '<div class="card"><b>ניטור ביער חוף הכרמל</b><p class="muted" style="margin:4px 0 0">חלק מהמחקר: 3 תאים מוגרלים ביער</p>' +
-    '<button id="btnCarmel">הגרלת 3 תאים בחוף הכרמל</button></div>' +
-    '<div class="card"><b>נסו את מזלכם קרוב אליכם</b><p class="muted" style="margin:4px 0 0">3 תאים ביער של קק"ל הקרוב, עד ' + NEAR_KM * 1000 + ' מטר ממך (אם אין יער קרוב: עד 3 ק"מ)</p>' +
-    '<button id="btnNear">הגרלת 3 תאים לידי</button>' +
+    '<h2 style="margin-bottom:6px">איפה מחפשים היום?</h2>' +
+    (open ? '<div class="card"><b>המשך ניטור קיים</b><p class="muted" style="margin:4px 0 0">יש לך תאים פתוחים שעוד לא דווחו</p>' +
+            '<button id="btnChoiceBack">המשך לתאים הפתוחים</button></div>' : '') +
+    '<div class="card"><b>מה נמצא לידי</b><p class="muted" style="margin:4px 0 0">ביער של קק"ל הקרוב, עד ' + NEAR_KM * 1000 + ' מטר ממך (אם אין יער קרוב: עד 3 ק"מ)</p>' +
+    '<button id="btnNear">3 תאים אקראיים לידי</button>' +
     '<button class="second" id="btnDrop">זרוק עליי: תא אחד שאני במרכז שלו</button>' +
     (isExpert() ? '' : '<p class="muted" style="margin:6px 0 0;font-size:13px">🟧 שטחים כתומים במפה הם של רשות הטבע והגנים. ' +
       'בשמורות טבע אסור לרדת מהשבילים, ולכן לא מגרילים בהם תאים.</p>') + '</div>' +
-    (open ? '<button class="second" id="btnChoiceBack">המשך לערכה הפתוחה</button>' : '');
+    '<div class="card"><b>ניטור לפי מודל</b><p class="muted" style="margin:4px 0 0">חלק מהמחקר: 3 תאים שהמודל בחר</p>' +
+    '<button id="btnCarmel">חוף הכרמל</button>' +
+    '<button class="second" id="btnCountry" disabled style="opacity:.55">שאר הארץ · בקרוב</button></div>';
   $('btnCarmel').onclick = function () { newKit(); };
   $('btnNear').onclick = nearKit;
   $('btnDrop').onclick = dropKit;
