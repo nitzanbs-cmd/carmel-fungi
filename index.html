@@ -135,6 +135,7 @@
 <section id="sHome" class="screen hidden">
   <header>
     <h1>התאים שלי</h1>
+    <button id="btnDraft" class="hidden">טיוטה</button>
     <button id="btnOutbox" class="hidden">ממתינים לשליחה <span class="badge" id="outboxCount">0</span></button>
     <button id="btnMenu">☰</button>
   </header>
@@ -201,9 +202,10 @@
   <div class="pad">
     <p id="endMsg"></p>
     <div id="endCards"></div>
-    <label class="check hidden" id="nothingBox"><input type="checkbox" id="chkNothing"> חיפשתי ולא ראיתי אף פטרייה בתא.</label>
-    <button id="btnSendNow" disabled>לשלוח עכשיו</button>
-    <button id="btnSendLater" class="second" disabled>לשלוח אחר כך</button>
+    <button id="btnNothing" class="hidden">חיפשתי ולא מצאתי פטריות · שלח</button>
+    <button id="btnSendNow">לשלוח עכשיו</button>
+    <button id="btnSendLater" class="second">לשלוח אחר כך</button>
+    <button id="btnPark" class="second">שמור בטיוטות וחזור</button>
   </div>
 </section>
 
@@ -606,6 +608,7 @@ function hasOpenKit() { return !!(kit.cells && kit.cells.some(function (c) { ret
 function goHome(withChoice) {
   choosing = !!withChoice;
   show('sHome');
+  var dr = store('draft'); $('btnDraft').classList.toggle('hidden', !(dr && dr.parked));
   $('mAdmin').classList.toggle('hidden', !session.admin); $('mDash').classList.toggle('hidden', !session.admin);
   $('mTestKit').classList.remove('hidden');
   if (!homeMap) { homeMap = makeMap('homeMap'); drawAreas(homeMap); }
@@ -701,6 +704,51 @@ function pickForest() {
     $('btnFBack').onclick = showChoice;
   });
 }
+// ---- save the photo map + place names of a forest (with a 500 m buffer) so it works without reception ----
+var TILE_URLS = ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/',
+                 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/'];
+function forestBox(model, name) {
+  if (model === 'carmel') return CARMEL_BOX.slice();
+  var b = [90, 180, -90, -180];
+  function walk(p) { if (typeof p[0] === 'number') { b[0] = Math.min(b[0], p[0]); b[1] = Math.min(b[1], p[1]); b[2] = Math.max(b[2], p[0]); b[3] = Math.max(b[3], p[1]); } else p.forEach(walk); }
+  (AREAS || []).forEach(function (x) { if (x.k === 'kkl' && x.n === name) walk(x.r); });
+  if (b[0] > b[2]) {   // no polygon by that name: 2 km around the forest point
+    var m = (MODELS || []).filter(function (x) { return x.f === model; })[0]; if (!m) return null;
+    b = [m.lat - 0.018, m.lon - 0.021, m.lat + 0.018, m.lon + 0.021];
+  }
+  return b;
+}
+function tileList(b, zMax) {
+  var buf = 0.0045, out = [];   // ~500 m
+  function tx(lon, z) { return Math.floor((lon + 180) / 360 * Math.pow(2, z)); }
+  function ty(lat, z) { var r = lat * Math.PI / 180; return Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * Math.pow(2, z)); }
+  for (var z = 11; z <= zMax; z++)
+    for (var x = tx(b[1] - buf * 1.2, z); x <= tx(b[3] + buf * 1.2, z); x++)
+      for (var y = ty(b[2] + buf, z); y <= ty(b[0] - buf, z); y++) out.push(z + '/' + y + '/' + x);
+  return out;
+}
+function saveForestMap(model, name) {
+  Promise.all([loadAreas(), loadModels()]).then(function () {
+    var b = forestBox(model, name); if (!b) { toast('לא מצאתי את גבולות היער'); return; }
+    var zMax = 17, t = tileList(b, zMax);
+    while (t.length > 4000 && zMax > 15) t = tileList(b, --zMax);   // a big forest: less detail, not tens of thousands of tiles
+    var mb = Math.round(t.length * 2 * 15 / 1024);
+    if (!confirm('לשמור את מפת ' + name + '? בערך ' + mb + ' MB. כדאי בוויפיי.')) return;
+    var urls = []; t.forEach(function (k) { TILE_URLS.forEach(function (u) { urls.push(u + k); }); });
+    var done = 0, fail = 0, i = 0;
+    function next() {
+      if (i >= urls.length) return Promise.resolve();
+      var u = urls[i++];
+      return fetch(u, { mode:'no-cors' }).catch(function () { fail++; }).then(function () {
+        done++; if (done % 100 === 0) toast('שומר מפה... ' + Math.round(100 * done / urls.length) + '%');
+        return next();
+      });
+    }
+    Promise.all([next(), next(), next(), next(), next(), next()]).then(function () {
+      toast(fail ? 'נשמר חלקית (' + fail + ' חלקים חסרים). נסו שוב כשיש קליטה טובה' : 'מפת ' + name + ' נשמרה בטלפון', 7000);
+    });
+  });
+}
 // the forest is chosen: which vegetation (only what this forest has) and how many cells
 function modelOptions(model, name, counts) {
   if (model === 'carmel') counts = CARMEL_VEG_N;
@@ -714,7 +762,10 @@ function modelOptions(model, name, counts) {
     [3, 6, 9].map(function (k) { return '<button class="' + (k === 3 ? '' : 'second ') + 'chip" data-n="' + k + '" style="width:auto">' + k + '</button>'; }).join('') + '</div>' +
     '<p class="muted" style="font-size:12px;margin:2px 0 8px">חם, בינוני וקר בחלקים שווים (לא רואים מי מי). ' +
     '</p><p class="muted" style="font-size:11px;margin:0 0 8px">נתוני הצומח נלקחו מפרויקט VegCover Israel</p>' +
-    '<button id="btnDrawModel">הגרל תאים</button><button class="second" id="btnMBack">חזרה</button>';
+    '<button id="btnDrawModel">הגרל תאים</button>' +
+    '<button class="second" id="btnSaveMap">💾 שמירת מפת היער לשימוש בלי קליטה</button>' +
+    '<button class="second" id="btnMBack">חזרה</button>';
+  $('btnSaveMap').onclick = function () { saveForestMap(model, name); };
   function pickChip(box, attr, set) {
     $(box).querySelectorAll('[' + attr + ']').forEach(function (b) {
       b.onclick = function () {
@@ -759,6 +810,8 @@ $('btnOutbox').onclick = function () {
 // ================= 4. arrival =================
 var visit = null;   // the visit in progress
 function arrive(cell, num) {
+  var d = store('draft');
+  if (d && d.parked && !confirm('יש ביקור בתא ' + d.num + ' שמור בטיוטות. להתחיל ביקור חדש ולמחוק אותו?')) return;
   visit = { cell:cell, num:num, quality:null, observations:[], track:[] };
   $('arriveTitle').textContent = 'הגעתי לתא ' + num;
   if (cell.slope >= STEEP_DEG) toast('⚠ התא תלול (כ-' + Math.round(cell.slope) + '°). הולכים בזהירות, ואם לא בטוח לא נכנסים', 8000);
@@ -1046,13 +1099,20 @@ function showEnd(timeUp) {
       SHOTS.map(function (s) { return o.photos[s[0]] ? '<img src="' + o.photos[s[0]] + '">' : ''; }).join('') + '</div></div>';
   }).join('');
   var none = visit.observations.length === 0;
-  $('nothingBox').classList.toggle('hidden', !none);
-  $('chkNothing').checked = false;
-  $('btnSendNow').disabled = $('btnSendLater').disabled = none;
+  $('btnNothing').classList.toggle('hidden', !none);
+  $('btnSendNow').classList.toggle('hidden', none);
+  $('btnSendLater').textContent = none ? 'לא מצאתי · לשלוח אחר כך' : 'לשלוח אחר כך';
   if (!none) $('endCards').insertAdjacentHTML('beforeend', '<button class="second" id="btnMore">עוד תצפית</button>');
   if (!none) $('btnMore').onclick = function () { $('btnPlus').onclick(); };
 }
-$('chkNothing').onchange = function () { $('btnSendNow').disabled = $('btnSendLater').disabled = !this.checked; };
+$('btnNothing').onclick = function () { $('btnSendNow').onclick(); };
+$('btnPark').onclick = function () {   // nothing is deleted: the visit waits in drafts
+  visit.parked = true; saveDraft(); visit = null; goHome(); toast('נשמר בטיוטות. אפשר לחזור אליו מהכפתור "טיוטה"');
+};
+$('btnDraft').onclick = function () {
+  var d = store('draft'); if (!d) return;
+  visit = d; visit.parked = false; saveDraft(); showEnd(false);
+};
 function packVisit(auto) {
   var pkg = {
     auto:auto,
@@ -1250,7 +1310,7 @@ $('mAdmin').onclick = openAdmin;
 // ================= start =================
 openDb().then(function () {
   var draft = store('draft');
-  if (session && draft && draft.start) {   // the app was closed in the middle of a visit
+  if (session && draft && draft.start && !draft.parked) {   // the app was closed in the middle of a visit
     visit = draft;
     if (!draft.end) { draft.end = Date.now(); saveDraft(); }
     showEnd(false); toast('המשך של ביקור שלא הסתיים');
