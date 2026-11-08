@@ -391,6 +391,28 @@ function makeMap(id) {
   m.attributionControl.setPrefix(false);
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
               { maxZoom:20, maxNativeZoom:19, attribution:'Esri, Maxar' }).addTo(m);
+  // place names only, on top of the photo
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+              { maxZoom:20, maxNativeZoom:19 }).addTo(m);
+  // legend behind an arrow: areas, my cell, north arrow and scale
+  var Legend = L.Control.extend({ options:{ position:'bottomleft' }, onAdd:function () {
+    var d = L.DomUtil.create('div', 'legend');
+    d.style.cssText = 'background:rgba(255,255,255,.92);color:#222;border-radius:8px;padding:4px 8px;font-size:12px;direction:rtl;box-shadow:0 1px 4px rgba(0,0,0,.3)';
+    d.innerHTML = '<div class="lgArrow" style="cursor:pointer;font-size:16px;text-align:center">▲</div>' +
+      '<div class="lgBody" style="display:none;line-height:1.7">' +
+      '<div style="text-align:center;font-weight:bold">⬆<br>N</div>' +
+      '<div><span style="display:inline-block;width:14px;height:10px;border:2px solid #7CFC00;margin-left:6px"></span>יער קק"ל</div>' +
+      '<div><span style="display:inline-block;width:14px;height:10px;border:2px dashed #ff9800;background:rgba(255,152,0,.3);margin-left:6px"></span>שמורת טבע (רט"ג)</div>' +
+      '<div><span style="display:inline-block;width:14px;height:10px;border:3px solid #ffd54f;margin-left:6px"></span>התא שלי</div>' +
+      '<div class="lgScale"></div></div>';
+    L.DomEvent.disableClickPropagation(d);
+    var body = d.querySelector('.lgBody'), arrow = d.querySelector('.lgArrow');
+    arrow.onclick = function () { var open = body.style.display === 'none'; body.style.display = open ? '' : 'none'; arrow.textContent = open ? '▼' : '▲'; };
+    return d;
+  } });
+  var lg = new Legend().addTo(m);
+  var sc = L.control.scale({ metric:true, imperial:false }).addTo(m);
+  lg.getContainer().querySelector('.lgScale').appendChild(sc.getContainer());
   m._me = L.circleMarker([0, 0], { radius:7, color:'#fff', weight:2, fillColor:'#1a73e8', fillOpacity:1 });
   m._acc = L.circle([0, 0], { radius:1, color:'#1a73e8', weight:1, fillOpacity:.12, interactive:false });
   fixListeners.push(function (f) {
@@ -691,7 +713,7 @@ function modelOptions(model, name, counts) {
     '<b>כמה תאים?</b><div id="nChips" style="display:flex;gap:6px;margin:6px 0">' +
     [3, 6, 9].map(function (k) { return '<button class="' + (k === 3 ? '' : 'second ') + 'chip" data-n="' + k + '" style="width:auto">' + k + '</button>'; }).join('') + '</div>' +
     '<p class="muted" style="font-size:12px;margin:2px 0 8px">חם, בינוני וקר בחלקים שווים (לא רואים מי מי). ' +
-    'מפת הצומח: VegCover Israel 2023/24, עידו אונטרמן, פרופ\' נועם לוין ופרופ\' יעל מוזס, האוניברסיטה העברית</p>' +
+    '</p><p class="muted" style="font-size:11px;margin:0 0 8px">נתוני הצומח נלקחו מפרויקט VegCover Israel</p>' +
     '<button id="btnDrawModel">הגרל תאים</button><button class="second" id="btnMBack">חזרה</button>';
   function pickChip(box, attr, set) {
     $(box).querySelectorAll('[' + attr + ']').forEach(function (b) {
