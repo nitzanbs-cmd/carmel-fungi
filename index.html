@@ -285,7 +285,7 @@ function forget(k) { try { localStorage.removeItem(k); } catch (e) {} }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]; }); }
 var ERRORS = { wrong_code:'הקוד שגוי', code_expired:'עדיין לא נשלח קוד. לחצו שליחה', too_many_tries:'יותר מדי ניסיונות. לחצו על שליחת הקוד שוב',
                not_approved:'הבקשה עדיין לא אושרה', signed_out:'צריך להתחבר מחדש', blocked:'הגישה שלך הוגבלה',
-               bad_email:'המייל לא תקין', no_forest_near:'אין יער של קק"ל עד 3 ק"מ ממך. נסו כשאתם בתוך יער או לידו', map_check_failed:'שרת המפה לא ענה, ולכן לא הוגרלו תאים. נסו שוב בעוד דקה', no_room_for_test_cell:'לא נמצא מספיק שטח פתוח לידך', no_location:'אין מיקום GPS', kit_not_finished:'יש עדיין תאים פתוחים בערכה', offline:'אין קליטה כרגע', no_replacement:'לא נמצא תא מתאים להחלפה', robot_check:'בדיקת האבטחה נכשלה. נסו שוב בעוד רגע', cliff_here:'כאן תלול מדי (צוק). זזים קצת למקום מתון יותר ומנסים שוב', too_steep_near:'השטח לידך תלול מדי. נסו ממקום אחר' };
+               bad_email:'המייל לא תקין', no_forest_near:'אין יער של קק"ל עד 3 ק"מ ממך. נסו כשאתם בתוך יער או לידו', map_check_failed:'שרת המפה לא ענה, ולכן לא הוגרלו תאים. נסו שוב בעוד דקה', no_room_for_test_cell:'לא נמצא מספיק שטח פתוח לידך', no_location:'אין מיקום GPS', kit_not_finished:'יש עדיין תאים פתוחים בערכה', offline:'אין קליטה כרגע', no_replacement:'לא נמצא תא מתאים להחלפה', no_cells_of_this_type:'אין ביער הזה מספיק תאים פנויים מהסוג הזה. נסו צומח אחר או "תפתיע אותי"', no_model_here:'עוד אין מודל ליער הזה', no_kit_found:'לא נמצאה קבוצת תאים קרובה. נסו פחות תאים או צומח אחר', robot_check:'בדיקת האבטחה נכשלה. נסו שוב בעוד רגע', cliff_here:'כאן תלול מדי (צוק). זזים קצת למקום מתון יותר ומנסים שוב', too_steep_near:'השטח לידך תלול מדי. נסו ממקום אחר' };
 
 // ================= API (Google, or a local mock) =================
 var session = store('session') || null;   // {email, token, access, admin, consent}
@@ -631,10 +631,90 @@ function drawKit() {
   sheet.querySelectorAll('[data-rc]').forEach(function (b) { b.onclick = function () { repFor = null; drawKit(); }; });
   if (bounds.isValid()) homeMap.fitBounds(bounds.pad(0.3));
 }
-function newKit() {
+// ---- model kits: Carmel model, or the country model per KKL forest (models_index.json, no hidden levels in it) ----
+// vegetation (VegCover Israel 2023/24, Unterman, Levin & Moses, Hebrew University; app by Keren Gold)
+var VEG = ['', '🌳 אלונים', '🌲 אורנים', '🌳🌿 מעורב', '🌿 שיחים', '🌾 בתה'];
+var CARMEL_VEG_N = { 1: 231, 2: 1461, 3: 441, 5: 297 };   // Carmel citizen cells per class
+var CARMEL_BOX = [32.6158, 34.9582, 32.6640, 35.0042];      // the Carmel model wins inside (with a margin)
+var MODELS = null, modelsLoading = null;
+function loadModels() {
+  if (!modelsLoading) modelsLoading = fetch('models_index.json').then(function (r) { return r.json(); })
+    .then(function (a) { MODELS = a; return a; }).catch(function () { modelsLoading = null; return null; });
+  return modelsLoading;
+}
+function inCarmelModel(lat, lon) { var m = 0.004; return lat > CARMEL_BOX[0] - m && lat < CARMEL_BOX[2] + m && lon > CARMEL_BOX[1] - m && lon < CARMEL_BOX[3] + m; }
+function hereForest() {
+  if (!lastFix) { toast('מחכה למיקום GPS... לחצו על ◎ במפה'); return; }
+  if (inCarmelModel(lastFix.lat, lastFix.lon)) { modelOptions('carmel', 'אזור כרמל'); return; }
+  Promise.all([loadAreas(), loadModels()]).then(function () {
+    var name = AREAS && areaAt(lastFix.lat, lastFix.lon).kkl;
+    var f = name && MODELS && MODELS.filter(function (m) { return m.n === name; })[0];
+    if (!f && MODELS) {   // not inside a forest: the closest one within 3 km
+      var best = null, bd = 3000;
+      MODELS.forEach(function (m) { var d = Math.hypot((m.lat - lastFix.lat) * M_LAT, (m.lon - lastFix.lon) * mLon(lastFix.lat)); if (d < bd) { bd = d; best = m; } });
+      f = best;
+    }
+    if (!f) { toast('לא מצאתי יער עם מודל לידך. אפשר לבחור יער מהרשימה', 7000); return; }
+    modelOptions(f.f, f.n, f.v);
+  });
+}
+function pickForest() {
+  loadModels().then(function (a) {
+    if (!a) { toast('רשימת היערות עוד לא נשמרה בטלפון. נסו כשיש קליטה'); return; }
+    $('homeSheet').innerHTML = '<h2 style="margin-bottom:6px">בחירת יער</h2>' +
+      '<input id="forestQ" placeholder="שם היער, למשל ביריה" style="width:100%">' +
+      '<div id="forestList" style="max-height:45vh;overflow:auto;margin-top:6px"></div>' +
+      '<button class="second" id="btnFBack">חזרה</button>';
+    function list() {
+      var q = $('forestQ').value.trim();
+      var hits = a.filter(function (m) { return !q || m.n.indexOf(q) >= 0; }).sort(function (x, y) { return x.n < y.n ? -1 : 1; });
+      if ('אזור כרמל חוף הכרמל אלונה'.indexOf(q) >= 0 || !q) hits.unshift({ f: 'carmel', n: 'אזור כרמל (חוף הכרמל ואלונה)' });
+      $('forestList').innerHTML = hits.slice(0, 60).map(function (m, i) { return '<button class="second" data-fi="' + i + '">' + m.n + '</button>'; }).join('') ||
+        '<p class="muted">לא נמצא יער בשם הזה</p>';
+      $('forestList').querySelectorAll('[data-fi]').forEach(function (b) {
+        b.onclick = function () { var m = hits[+b.dataset.fi]; modelOptions(m.f, m.n, m.v); };
+      });
+    }
+    $('forestQ').oninput = list; list();
+    $('btnFBack').onclick = showChoice;
+  });
+}
+// the forest is chosen: which vegetation (only what this forest has) and how many cells
+function modelOptions(model, name, counts) {
+  if (model === 'carmel') counts = CARMEL_VEG_N;
+  var veg = 0, n = 3;
+  var kinds = [1, 2, 3, 4, 5].filter(function (k) { return (counts && counts[k]) >= 3; });
+  $('homeSheet').innerHTML = '<h2 style="margin-bottom:6px">' + name + '</h2>' +
+    '<b>איזה צומח?</b><div id="vegChips" style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0">' +
+    kinds.map(function (k) { return '<button class="second chip" data-v="' + k + '" style="width:auto">' + VEG[k] + '</button>'; }).join('') +
+    '<button class="chip" data-v="0" style="width:auto">🎲 תפתיע אותי</button></div>' +
+    '<b>כמה תאים?</b><div id="nChips" style="display:flex;gap:6px;margin:6px 0">' +
+    [3, 6, 9].map(function (k) { return '<button class="' + (k === 3 ? '' : 'second ') + 'chip" data-n="' + k + '" style="width:auto">' + k + '</button>'; }).join('') + '</div>' +
+    '<p class="muted" style="font-size:12px;margin:2px 0 8px">חם, בינוני וקר בחלקים שווים (לא רואים מי מי). ' +
+    'מפת הצומח: VegCover Israel 2023/24, עידו אונטרמן, פרופ\' נועם לוין ופרופ\' יעל מוזס, האוניברסיטה העברית</p>' +
+    '<button id="btnDrawModel">הגרל תאים</button><button class="second" id="btnMBack">חזרה</button>';
+  function pickChip(box, attr, set) {
+    $(box).querySelectorAll('[' + attr + ']').forEach(function (b) {
+      b.onclick = function () {
+        $(box).querySelectorAll('[' + attr + ']').forEach(function (x) { x.classList.add('second'); });
+        b.classList.remove('second'); set(+b.getAttribute(attr));
+      };
+    });
+  }
+  pickChip('vegChips', 'data-v', function (v) { veg = v; });
+  pickChip('nChips', 'data-n', function (v) { n = v; });
+  $('btnMBack').onclick = showChoice;
+  $('btnDrawModel').onclick = function () { newKit({ model: model, veg: veg, n: n }); };
+}
+function newKit(opt) {
   choosing = false;
-  api('drawKit').then(function (r) { kit = r; store('kit', r); visitedIds = {}; store('visitedIds', visitedIds); drawKit(); })
+  toast('מגריל תאים...', 20000);
+  api('drawKit', opt || {}).then(function (r) {
+      kit = r; store('kit', r); visitedIds = {}; store('visitedIds', visitedIds); drawKit();
+      toast('נוצרו ' + r.cells.length + ' תאים. הם שמורים בטלפון וזמינים גם בלי קליטה', 6000);
+    })
     .catch(function (e) {
+      choosing = true;
       if (e.message === 'kit_not_finished') { toast('חלק מהביקורים עדיין ממתינים לשליחה. שלחו אותם קודם'); return; }
       toast(errText(e));
     });
@@ -1039,10 +1119,13 @@ function showChoice() {
     '<button class="second" id="btnDrop">זרוק עליי: תא אחד שאני במרכז שלו</button>' +
     (isExpert() ? '' : '<p class="muted" style="margin:6px 0 0;font-size:13px">🟧 שטחים כתומים במפה הם של רשות הטבע והגנים. ' +
       'בשמורות טבע אסור לרדת מהשבילים, ולכן לא מגרילים בהם תאים.</p>') + '</div>' +
-    '<div class="card"><b>ניטור לפי מודל</b><p class="muted" style="margin:4px 0 0">חלק מהמחקר: 3 תאים שהמודל בחר</p>' +
-    '<button id="btnCarmel">חוף הכרמל</button>' +
-    '<button class="second" id="btnCountry" disabled style="opacity:.55">שאר הארץ · בקרוב</button></div>';
-  $('btnCarmel').onclick = function () { newKit(); };
+    '<div class="card"><b>ניטור לפי מודל</b><p class="muted" style="margin:4px 0 0">חלק מהמחקר: תאים שהמודל בחר. אפשר להגריל בבית, והתאים נשמרים בטלפון</p>' +
+    '<button id="btnCarmel">🌲 אזור כרמל (חוף הכרמל ואלונה)</button>' +
+    '<button class="second" id="btnHereForest">📍 היער שאני בו</button>' +
+    '<button class="second" id="btnPickForest">🔎 בחירת יער מרשימה</button></div>';
+  $('btnCarmel').onclick = function () { modelOptions('carmel', 'אזור כרמל'); };
+  $('btnHereForest').onclick = hereForest;
+  $('btnPickForest').onclick = pickForest;
   $('btnNear').onclick = nearKit;
   $('btnDrop').onclick = dropKit;
   if ($('btnChoiceBack')) $('btnChoiceBack').onclick = function () { choosing = false; drawKit(); };
