@@ -264,8 +264,23 @@ function show(id) {
   $(id).classList.remove('hidden');
   setTimeout(function () { [homeMap, searchMap, histMap, adminMap].forEach(function (m) { if (m) m.invalidateSize(); }); }, 50);
 }
+// a mushroom that fills up while waiting (pct: real progress; without it, it fills in a loop)
+var shroomN = 0;
+function shroomSvg(size, pct) {
+  var id = 'sh' + (++shroomN), h = 40;
+  var fill = pct == null
+    ? '<rect x="0" y="0" width="40" height="40" fill="#c8793a"><animate attributeName="y" values="40;0;0" keyTimes="0;.8;1" dur="1.6s" repeatCount="indefinite"/></rect>'
+    : '<rect x="0" y="' + (h - h * pct / 100) + '" width="40" height="40" fill="#c8793a"/>';
+  return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 40 40" style="vertical-align:middle">' +
+    '<defs><clipPath id="' + id + '"><path d="M4 20 Q4 4 20 4 Q36 4 36 20 Z M15 20 h10 v14 q0 3 -5 3 q-5 0 -5 -3 Z"/></clipPath></defs>' +
+    '<path d="M4 20 Q4 4 20 4 Q36 4 36 20 Z M15 20 h10 v14 q0 3 -5 3 q-5 0 -5 -3 Z" fill="#f3e6d3" stroke="#7a4a22" stroke-width="1.5"/>' +
+    '<g clip-path="url(#' + id + ')">' + fill + '</g></svg>';
+}
 function toast(msg, ms) {
-  var t = $('toast'); t.textContent = msg; t.style.display = 'block';
+  var t = $('toast');
+  var wait = /\.\.\./.test(msg), pm = msg.match(/(\d+)%/);
+  if (wait) t.innerHTML = shroomSvg(26, pm ? +pm[1] : null) + ' ' + esc(msg); else t.textContent = msg;
+  t.style.display = 'block';
   clearTimeout(toast._t); toast._t = setTimeout(function () { t.style.display = 'none'; }, ms || 3000);
 }
 // reCAPTCHA v3 on sign-up: invisible, works once the site key is filled in (and the secret is set on the Google side)
@@ -393,6 +408,16 @@ function makeMap(id) {
   m.attributionControl.setPrefix(false);
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
               { maxZoom:20, maxNativeZoom:19, attribution:'Esri, Maxar' }).addTo(m);
+  // a filling mushroom in the corner while map tiles load
+  var ld = L.DomUtil.create('div', '', m.getContainer());
+  ld.style.cssText = 'position:absolute;top:8px;left:8px;z-index:1000;background:rgba(255,255,255,.85);border-radius:50%;padding:4px;display:none;pointer-events:none';
+  ld.innerHTML = shroomSvg(30);
+  setTimeout(function () { m.eachLayer(function (l) {
+    if (!(l instanceof L.TileLayer)) return;
+    l.on('loading', function () { ld.style.display = 'block'; });
+    l.on('load', function () { ld.style.display = 'none'; });
+    if (l.isLoading && l.isLoading()) ld.style.display = 'block';
+  }); }, 0);
   // place names only, on top of the photo
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
               { maxZoom:20, maxNativeZoom:19 }).addTo(m);
