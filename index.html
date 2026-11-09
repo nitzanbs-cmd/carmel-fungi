@@ -732,7 +732,7 @@ function saveForestMap(model, name) {
     var zMax = 17, t = tileList(b, zMax);
     while (t.length > 4000 && zMax > 15) t = tileList(b, --zMax);   // a big forest: less detail, not tens of thousands of tiles
     var mb = Math.round(t.length * 2 * 15 / 1024);
-    if (!confirm('לשמור את מפת ' + name + '? בערך ' + mb + ' MB. כדאי בוויפיי.')) return;
+    if (!confirm('לשמור את מפת ' + name + ' לשימוש בלי קליטה? בערך ' + mb + ' MB. כדאי בוויפיי.')) return;
     var urls = []; t.forEach(function (k) { TILE_URLS.forEach(function (u) { urls.push(u + k); }); });
     var done = 0, fail = 0, i = 0;
     function next() {
@@ -762,9 +762,7 @@ function modelOptions(model, name, counts) {
     '<p class="muted" style="font-size:12px;margin:2px 0 8px">חם, בינוני וקר בחלקים שווים (לא רואים מי מי). ' +
     '</p><p class="muted" style="font-size:11px;margin:0 0 8px">נתוני הצומח נלקחו מפרויקט VegCover Israel</p>' +
     '<button id="btnDrawModel">הגרל תאים</button>' +
-    '<button class="second" id="btnSaveMap">💾 שמירת מפת היער לשימוש בלי קליטה</button>' +
     '<button class="second" id="btnMBack">חזרה</button>';
-  $('btnSaveMap').onclick = function () { saveForestMap(model, name); };
   function pickChip(box, attr, set) {
     $(box).querySelectorAll('[' + attr + ']').forEach(function (b) {
       b.onclick = function () {
@@ -776,14 +774,15 @@ function modelOptions(model, name, counts) {
   pickChip('vegChips', 'data-v', function (v) { veg = v; });
   pickChip('nChips', 'data-n', function (v) { n = v; });
   $('btnMBack').onclick = showChoice;
-  $('btnDrawModel').onclick = function () { newKit({ model: model, veg: veg, n: n }); };
+  $('btnDrawModel').onclick = function () { newKit({ model: model, veg: veg, n: n }, name); };
 }
-function newKit(opt) {
+function newKit(opt, forestName) {
   choosing = false;
   toast('מגריל תאים...', 20000);
   api('drawKit', opt || {}).then(function (r) {
       kit = r; store('kit', r); visitedIds = {}; store('visitedIds', visitedIds); drawKit();
       toast('נוצרו ' + r.cells.length + ' תאים. הם שמורים בטלפון וזמינים גם בלי קליטה', 6000);
+      if (opt && opt.model) setTimeout(function () { saveForestMap(opt.model, forestName); }, 800);   // offer the forest map right after the draw
     })
     .catch(function (e) {
       choosing = true;
