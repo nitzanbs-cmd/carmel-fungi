@@ -141,6 +141,7 @@
   </header>
   <div id="menu" class="card hidden" style="position:absolute;top:52px;left:8px;z-index:2000;width:200px">
     <button class="second small" style="width:100%;margin:4px 0" id="mHistory">ההיסטוריה שלי</button>
+    <button class="second small" style="width:100%;margin:4px 0" id="mGuide">איך מצלמים פטרייה</button>
     <button class="second small hidden" style="width:100%;margin:4px 0" id="mAdmin">לוח בקרה</button>
     <a class="hidden" id="mDash" href="dashboard.html" target="_blank"><button class="second small" style="width:100%;margin:4px 0">דשבורד המחקר (מחשב)</button></a>
     <button class="second small hidden" style="width:100%;margin:4px 0" id="mTestKit">איפה מחפשים היום?</button>
@@ -999,9 +1000,44 @@ var STEPS = [
   { kind:'count', title:'כמה פרטים יש כאן?' },
   { kind:'taxon', title:'יודעים מה זה?', note:'לא חובה. אם לא יודעים, ממשיכים' }
 ];
+// ---- how to photograph a mushroom (illustrations from Nitzan's guide "בין הכובע לרגל") ----
+var TIPS = {
+  top:     { s:'כובע ברור, מרקם ושוליים', l:'שימו לב שרואים את הכובע בצורה ברורה, כולל המרקם ושולי הכובע.' },
+  under:   { s:'רגל, שכבה פורייה והחיבור ביניהן', l:'שימו לב שרואים את בסיס הרגל, את הרגל ואת השכבה הפורייה, ואת החיבור של השכבה הפורייה לרגל.' },
+  habitat: { s:'כל הפטרייה והסביבה, ממרחק מטר', l:'צלמו ממרחק של כמטר, כך שרואים את כל מבנה הפטרייה: האם היא לבדה, איזה מצע יש סביבה ואיזה צומח.' }
+};
+var GUIDE = [
+  { img:['guide/intro.jpg'], t:'איך מצלמים פטרייה', x:'בכל תצפית 3 תמונות: מלמעלה, מלמטה ובית הגידול. תמונות טובות מאפשרות לזהות את הפטרייה.' },
+  { img:['guide/top.jpg'], t:'1. מלמעלה', x:TIPS.top.l },
+  { img:['guide/under1.jpg', 'guide/under2.jpg'], t:'2. מלמטה', x:TIPS.under.l },
+  { img:['guide/habitat.jpg'], t:'3. בית הגידול', x:TIPS.habitat.l }
+];
+function showGuide(done) {
+  var i = 0, box = document.createElement('div');
+  box.style.cssText = 'position:fixed;inset:0;z-index:5000;background:#fbf6ea;display:flex;flex-direction:column;padding:16px;overflow:auto;direction:rtl';
+  document.body.appendChild(box);
+  function close() { box.remove(); store('guideSeen', 1); if (done) done(); }
+  function draw() {
+    var c = GUIDE[i];
+    box.innerHTML = '<div class="muted" style="text-align:center">' + (i + 1) + ' / ' + GUIDE.length + '</div>' +
+      '<h2 style="text-align:center;margin:6px 0">' + c.t + '</h2>' +
+      c.img.map(function (s) { return '<img src="' + s + '" style="width:100%;max-height:' + (c.img.length > 1 ? 30 : 50) + 'vh;object-fit:contain;margin:4px 0">'; }).join('') +
+      '<p style="font-size:17px;line-height:1.5">' + c.x + '</p>' +
+      '<div style="margin-top:auto"><button id="gNext">' + (i < GUIDE.length - 1 ? 'הבא' : 'הבנתי, לצלם') + '</button>' +
+      (i > 0 ? '<button class="second" id="gPrev">הקודם</button>' : '') +
+      '<button class="second small" id="gSkip">דלג</button>' +
+      '<p class="muted" style="font-size:11px;text-align:center">איורים: מתוך "בין הכובע לרגל", ניצן בר שמואל</p></div>';
+    box.querySelector('#gNext').onclick = function () { if (i < GUIDE.length - 1) { i++; draw(); } else close(); };
+    if (i > 0) box.querySelector('#gPrev').onclick = function () { i--; draw(); };
+    box.querySelector('#gSkip').onclick = close;
+  }
+  draw();
+}
+$('mGuide').onclick = function () { $('menu').classList.add('hidden'); showGuide(); };
 $('btnPlus').onclick = function () {
   obs = { obs_id:uid(), photos:{}, count:null, taxon_level:'', taxon_name:'' };
-  step = 0; show('sObs'); renderStep(true);
+  function go() { step = 0; show('sObs'); renderStep(true); }
+  if (store('guideSeen')) go(); else showGuide(go);
 };
 function renderStep(autoCamera) {
   var s = STEPS[step], body = $('stepBody'), ok = $('btnStepOk');
@@ -1018,7 +1054,7 @@ function renderStep(autoCamera) {
       : '<button id="btnShoot" style="padding:40px 0;font-size:22px">📷 לצילום</button>') +
       (step > 0 && !src ? '<button class="second small" id="btnSkip" style="margin-top:14px">אי אפשר לצלם, לדלג</button>' : '');
     ok.disabled = !src;
-    var shoot = function () { openCamera(s.title); };
+    var shoot = function () { openCamera(s.title, s.shot); };
     if ($('btnShoot')) $('btnShoot').onclick = shoot;
     if ($('btnRetake')) $('btnRetake').onclick = shoot;
     if ($('btnSkip')) $('btnSkip').onclick = function () { step++; renderStep(true); };
@@ -1059,8 +1095,15 @@ $('btnStepBack').onclick = function () {
 };
 $('btnObsCancel').onclick = $('btnStepBack').onclick;
 
-function openCamera(label) {
+function openCamera(label, shot) {
   $('camLabel').textContent = label;
+  var seen = store('camTips') || {}, tip = TIPS[shot];
+  if (tip && !seen[shot]) {   // first time only: a short tip, the arrow opens the full text
+    seen[shot] = 1; store('camTips', seen);
+    $('camLabel').innerHTML = esc(label) + '<div style="font-size:13px;opacity:.9;margin-top:4px">' + tip.s +
+      ' <span id="tipArrow" style="cursor:pointer">▾</span><div id="tipLong" style="display:none;margin-top:4px">' + tip.l + '</div></div>';
+    $('tipArrow').onclick = function () { var o = $('tipLong').style.display === 'none'; $('tipLong').style.display = o ? 'block' : 'none'; this.textContent = o ? '▴' : '▾'; };
+  }
   if (camStream) { $('camera').classList.remove('hidden'); return; }
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { $('fileFallback').click(); return; }
   navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment', width:{ ideal:1920 }, height:{ ideal:1440 } }, audio:false })
