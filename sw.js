@@ -1,7 +1,6 @@
 // Keeps the app and the map tiles already seen available without reception.
-var CACHE = 'fungi-app-v15';
+var CACHE = 'fungi-app-v16';
 var SHELL = ['./', 'index.html', 'manifest.json', 'areas.json', 'contours.json', 'models_index.json',
-             'guide/intro.jpg', 'guide/top.jpg', 'guide/under1.jpg', 'guide/under2.jpg', 'guide/habitat.jpg',
              'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
              'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'];
 
