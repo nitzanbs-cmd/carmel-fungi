@@ -141,7 +141,7 @@
   </header>
   <div id="menu" class="card hidden" style="position:absolute;top:52px;left:8px;z-index:2000;width:200px">
     <button class="second small" style="width:100%;margin:4px 0" id="mHistory">ההיסטוריה שלי</button>
-    <button class="second small" style="width:100%;margin:4px 0" id="mGuide">איך מצלמים פטרייה</button>
+    <button class="second small hidden" style="width:100%;margin:4px 0" id="mGuide">איך מצלמים פטרייה</button>
     <button class="second small hidden" style="width:100%;margin:4px 0" id="mAdmin">לוח בקרה</button>
     <a class="hidden" id="mDash" href="dashboard.html" target="_blank"><button class="second small" style="width:100%;margin:4px 0">דשבורד המחקר (מחשב)</button></a>
     <button class="second small hidden" style="width:100%;margin:4px 0" id="mTestKit">איפה מחפשים היום?</button>
@@ -1037,7 +1037,7 @@ $('mGuide').onclick = function () { $('menu').classList.add('hidden'); showGuide
 $('btnPlus').onclick = function () {
   obs = { obs_id:uid(), photos:{}, count:null, taxon_level:'', taxon_name:'' };
   function go() { step = 0; show('sObs'); renderStep(true); }
-  if (store('guideSeen')) go(); else showGuide(go);
+  go();   // the illustrated guide is off until it is finished (9.11)
 };
 function renderStep(autoCamera) {
   var s = STEPS[step], body = $('stepBody'), ok = $('btnStepOk');
