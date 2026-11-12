@@ -637,7 +637,21 @@ function goHome(withChoice) {
   $('mAdmin').classList.toggle('hidden', !session.admin); $('mDash').classList.toggle('hidden', !session.admin);
   $('mTestKit').classList.remove('hidden');
   if (!homeMap) { homeMap = makeMap('homeMap'); drawAreas(homeMap); }
-  refreshOutbox(); drawKit(); loadKit();
+  refreshOutbox(); drawKit();
+  if (!kit.expert_day) loadKit();   // an expert field day lives on the phone; the server kit must not replace it
+}
+// ---- expert field day: the blind list code 3 handed out; nothing is drawn here ----
+function prepExpertDay() {
+  toast('מוריד את יום השטח...', 20000);
+  api('expertDay').then(function (r) {
+    if (kit.expert_day !== r.day) { visitedIds = {}; store('visitedIds', visitedIds); }
+    kit = { expert_day: r.day, cells: r.cells }; store('kit', kit);
+    choosing = false; drawKit();
+    var b = [90, 180, -90, -180];
+    r.cells.forEach(function (c) { b = [Math.min(b[0], c.center[0]), Math.min(b[1], c.center[1]), Math.max(b[2], c.center[0]), Math.max(b[3], c.center[1])]; });
+    toast('יום ' + r.day + ' נשמר בטלפון: ' + r.cells.length + ' תאים', 5000);
+    setTimeout(function () { saveForestMap('expert', 'יום השטח', b); }, 800);
+  }).catch(function (e) { toast(e.message === 'experts_only' ? 'יום שטח פתוח רק למומחים' : errText(e), 6000); });
 }
 function loadKit() {
   return api('kit').then(function (r) { kit = r; store('kit', r); drawKit(); })
@@ -654,14 +668,16 @@ function drawKit() {
   kit.cells.forEach(function (c, i) {
     var done = visitedIds[c.id] || c.done;
     var poly = cellPolygon(c, { color: done ? '#d0d0d0' : '#ffd54f', weight:3, fillOpacity:.15 }).addTo(homeMap);
-    poly.bindTooltip(String(i + 1), { permanent:true, direction:'center', className:'' });
+    var name = kit.expert_day ? c.id : String(i + 1);
+    poly.bindTooltip(name, { permanent:true, direction:'center', className:'' });
     kitLayers.push(poly); bounds.extend(poly.getBounds());
-    html += '<div class="cellrow"><div class="num" style="' + (done ? 'background:#888' : '') + '">' + (i + 1) + '</div>' +
-      '<div class="grow">תא ' + (i + 1) + (done ? ' · <span class="muted">דווח</span>' : '') +
+    if (kit.expert_day && c.optional && !(kit.cells[i - 1] || {}).optional) html += '<p class="muted" style="margin:10px 0 4px">רק אם נשאר זמן: תאים בחלקות</p>';
+    html += '<div class="cellrow"><div class="num" style="' + (done ? 'background:#888' : '') + '">' + (kit.expert_day ? c.walk : i + 1) + '</div>' +
+      '<div class="grow">תא ' + name + (done ? ' · <span class="muted">דווח</span>' : '') +
       (c.slope >= STEEP_DEG ? '<br><span style="color:#b3261e;font-weight:700">⚠ שיפוע תלול, כ-' + Math.round(c.slope) + '°. זהירות</span>' : '') +
       '<br><a href="https://www.google.com/maps/dir/?api=1&destination=' + c.center[0] + ',' + c.center[1] +
       '" target="_blank">ניווט לתא</a></div>' +
-      (done ? '' : repFor === c.id
+      (done ? '' : kit.expert_day ? '<button class="small" data-go="' + i + '">הגעתי</button>' : repFor === c.id
         ? '<button class="small" data-rs="' + c.id + '">⛰ שיפוע מסוכן</button>' +
           '<button class="small second" data-ro="' + c.id + '">סיבה אחרת</button>' +
           '<button class="small second" data-rc="1">ביטול</button>'
@@ -674,7 +690,7 @@ function drawKit() {
   sheet.innerHTML = html;
   if (allDone) $('btnDraw').onclick = function () { choosing = true; showChoice(); };
   else $('btnOtherKit').onclick = function () { choosing = true; showChoice(); };
-  sheet.querySelectorAll('[data-go]').forEach(function (b) { b.onclick = function () { arrive(kit.cells[Number(b.dataset.go)], Number(b.dataset.go) + 1); }; });
+  sheet.querySelectorAll('[data-go]').forEach(function (b) { b.onclick = function () { var k = Number(b.dataset.go); arrive(kit.cells[k], kit.expert_day ? kit.cells[k].id : k + 1); }; });
   sheet.querySelectorAll('[data-rep]').forEach(function (b) { b.onclick = function () { repFor = b.dataset.rep; drawKit(); }; });
   sheet.querySelectorAll('[data-rs]').forEach(function (b) { b.onclick = function () { replaceCell(b.dataset.rs, 'slope'); }; });
   sheet.querySelectorAll('[data-ro]').forEach(function (b) { b.onclick = function () { replaceCell(b.dataset.ro); }; });
@@ -752,9 +768,9 @@ function tileList(b, zMax) {
       for (var y = ty(b[2] + buf, z); y <= ty(b[0] - buf, z); y++) out.push(z + '/' + y + '/' + x);
   return out;
 }
-function saveForestMap(model, name) {
+function saveForestMap(model, name, box) {
   Promise.all([loadAreas(), loadModels()]).then(function () {
-    var b = forestBox(model, name); if (!b) { toast('לא מצאתי את גבולות היער'); return; }
+    var b = box || forestBox(model, name); if (!b) { toast('לא מצאתי את גבולות היער'); return; }
     var zMax = 17, t = tileList(b, zMax);
     while (t.length > 4000 && zMax > 15) t = tileList(b, --zMax);   // a big forest: less detail, not tens of thousands of tiles
     var mb = Math.round(t.length * 2 * 15 / 1024);
@@ -1260,6 +1276,8 @@ function showChoice() {
   var open = kit.cells && kit.cells.some(function (c) { return !(visitedIds[c.id] || c.done); });
   $('homeSheet').innerHTML =
     '<h2 style="margin-bottom:6px">איפה מחפשים היום?</h2>' +
+    (isExpert() ? '<div class="card"><b>🧪 יום שטח – מומחים</b><p class="muted" style="margin:4px 0 0">התאים שקוד 3 הגריל. עושים יום לפני, בוויפיי: הרשימה והמפה נשמרות בטלפון</p>' +
+      '<button id="btnExpertDay">הכנה ליום שטח</button></div>' : '') +
     (open ? '<div class="card"><b>המשך ניטור קיים</b><p class="muted" style="margin:4px 0 0">יש לך תאים פתוחים שעוד לא דווחו</p>' +
             '<button id="btnChoiceBack">המשך לתאים הפתוחים</button></div>' : '') +
     '<div class="card"><b>מה נמצא לידי</b><p class="muted" style="margin:4px 0 0">ביער של קק"ל הקרוב, עד ' + NEAR_KM * 1000 + ' מטר ממך (אם אין יער קרוב: עד 3 ק"מ)</p>' +
@@ -1271,6 +1289,7 @@ function showChoice() {
     '<button id="btnCarmel">🌲 אזור כרמל (חוף הכרמל ואלונה)</button>' +
     '<button class="second" id="btnHereForest">📍 היער שאני בו</button>' +
     '<button class="second" id="btnPickForest">🔎 בחירת יער מרשימה</button></div>';
+  if ($('btnExpertDay')) $('btnExpertDay').onclick = prepExpertDay;
   $('btnCarmel').onclick = function () { modelOptions('carmel', 'אזור כרמל'); };
   $('btnHereForest').onclick = hereForest;
   $('btnPickForest').onclick = pickForest;
