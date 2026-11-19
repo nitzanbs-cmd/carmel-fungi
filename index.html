@@ -766,32 +766,49 @@ function drawKit() {
     showChoice(); return;
   }
   var bounds = L.latLngBounds([]);
-  kit.cells.forEach(function (c, i) {
+  var cells = kit.cells.map(function (c) {   // expert day: a unit replaced in the field shows its backup (chosen by code 3)
+    if (!kit.expert_day || !c.use_backup || !c.backup) return c;
+    return { id:c.backup.id, center:c.backup.center, corners:c.backup.corners, walk:c.walk, spare:c.spare,
+             replaced_of:c.id, replaced_reason:c.use_backup };
+  });
+  cells.forEach(function (c, i) {
+    var orig = kit.cells[i];
     var done = visitedIds[c.id] || c.done;
     var poly = cellPolygon(c, { color: done ? '#d0d0d0' : '#ffd54f', weight:3, fillOpacity:.15 }).addTo(homeMap);
     var name = kit.expert_day ? c.id : String(i + 1);
     poly.bindTooltip(name, { permanent:true, direction:'center', className:'' });
     kitLayers.push(poly); bounds.extend(poly.getBounds());
-    if (kit.expert_day && c.optional && !(kit.cells[i - 1] || {}).optional) html += '<p class="muted" style="margin:10px 0 4px">רק אם נשאר זמן: תאים בחלקות</p>';
+    if (kit.expert_day && orig.spare && !(kit.cells[i - 1] || {}).spare) html += '<p class="muted" style="margin:10px 0 4px">רזרבה, רק אם נשאר זמן אחרי 15 היחידות</p>';
+    if (kit.expert_day && orig.optional && !(kit.cells[i - 1] || {}).optional) html += '<p class="muted" style="margin:10px 0 4px">בסוף, אם נשאר זמן: תאים בחלקות</p>';
+    var xr = kit.expert_day && !orig.optional && !done;
     html += '<div class="cellrow"><div class="num" style="' + (done ? 'background:#888' : '') + '">' + (kit.expert_day ? c.walk : i + 1) + '</div>' +
       '<div class="grow">תא ' + name + (done ? ' · <span class="muted">דווח</span>' : '') +
+      (c.replaced_of ? '<br><span class="muted">גיבוי במקום ' + c.replaced_of + ' (' + (c.replaced_reason === 'slope' ? 'שיפוע' : 'צמחייה סבוכה') + ')</span>' : '') +
+      (xr && !orig.use_backup && orig.backup === null ? '<br><span class="muted">אין יחידת גיבוי. אם אי אפשר להיכנס, מדלגים</span>' : '') +
+      (xr && repFor === orig.id && orig.backup ? '<br><button class="small" data-xs="' + i + '">⛰ שיפוע</button><button class="small" data-xv="' + i + '">🌿 צמחייה סבוכה</button><button class="small second" data-rc="1">ביטול</button>' : '') +
+      (xr && repFor === orig.id && orig.use_backup ? '<br><button class="small second" data-xu="' + i + '">חזרה ליחידה המקורית</button><button class="small second" data-rc="1">ביטול</button>' : '') +
       (c.slope >= STEEP_DEG ? '<br><span style="color:#b3261e;font-weight:700">⚠ שיפוע תלול, כ-' + Math.round(c.slope) + '°. זהירות</span>' : '') +
       '<br><a href="https://www.google.com/maps/dir/?api=1&destination=' + c.center[0] + ',' + c.center[1] +
       '" target="_blank">ניווט לתא</a></div>' +
-      (done ? '' : kit.expert_day ? '<button class="small" data-go="' + i + '">הגעתי</button>' : repFor === c.id
+      (done ? '' : kit.expert_day ? (xr && (orig.backup || orig.use_backup) && repFor !== orig.id ? '<button class="small second" data-rep="' + orig.id + '">' + (orig.use_backup ? 'ביטול החלפה' : 'להחליף') + '</button>' : '') +
+        '<button class="small" data-go="' + i + '">הגעתי</button>' : repFor === c.id
         ? '<button class="small" data-rs="' + c.id + '">⛰ שיפוע מסוכן</button>' +
           '<button class="small second" data-ro="' + c.id + '">סיבה אחרת</button>' +
           '<button class="small second" data-rc="1">ביטול</button>'
         : '<button class="small second" data-rep="' + c.id + '">החלפה</button>' +
           '<button class="small" data-go="' + i + '">הגעתי</button>') + '</div>';
   });
-  var allDone = kit.cells.every(function (c) { return visitedIds[c.id] || c.done; });
+  var allDone = cells.every(function (c) { return visitedIds[c.id] || c.done; });
   if (allDone) html += '<p style="margin-top:10px">סיימת את כל התאים. תודה!</p><button id="btnDraw">ערכה חדשה</button>';
   else html += '<button class="second small" id="btnOtherKit" style="margin-top:10px">איפה מחפשים היום?</button>';
   sheet.innerHTML = html;
   if (allDone) $('btnDraw').onclick = function () { choosing = true; showChoice(); };
   else $('btnOtherKit').onclick = function () { choosing = true; showChoice(); };
-  sheet.querySelectorAll('[data-go]').forEach(function (b) { b.onclick = function () { var k = Number(b.dataset.go); arrive(kit.cells[k], kit.expert_day ? kit.cells[k].id : k + 1); }; });
+  sheet.querySelectorAll('[data-go]').forEach(function (b) { b.onclick = function () { var k = Number(b.dataset.go); arrive(cells[k], kit.expert_day ? cells[k].id : k + 1); }; });
+  function useBackup(k, why) { kit.cells[k].use_backup = why; repFor = null; store('kit', kit); drawKit(); }
+  sheet.querySelectorAll('[data-xs]').forEach(function (b) { b.onclick = function () { useBackup(Number(b.dataset.xs), 'slope'); toast('עוברים ליחידת הגיבוי ' + kit.cells[b.dataset.xs].backup.id, 5000); }; });
+  sheet.querySelectorAll('[data-xv]').forEach(function (b) { b.onclick = function () { useBackup(Number(b.dataset.xv), 'vegetation'); toast('עוברים ליחידת הגיבוי ' + kit.cells[b.dataset.xv].backup.id, 5000); }; });
+  sheet.querySelectorAll('[data-xu]').forEach(function (b) { b.onclick = function () { useBackup(Number(b.dataset.xu), null); }; });
   sheet.querySelectorAll('[data-rep]').forEach(function (b) { b.onclick = function () { repFor = b.dataset.rep; drawKit(); }; });
   sheet.querySelectorAll('[data-rs]').forEach(function (b) { b.onclick = function () { replaceCell(b.dataset.rs, 'slope'); }; });
   sheet.querySelectorAll('[data-ro]').forEach(function (b) { b.onclick = function () { replaceCell(b.dataset.ro); }; });
@@ -1300,7 +1317,7 @@ function packVisit(auto) {
   var pkg = {
     auto:auto, scope:inExpertArea() ? 'expert' : '',   // fixed when recorded: decides the experts' or the community's sheet
     visit:{ visit_id:visit.visit_id, cell_id:visit.cell.id, quality:visit.quality, start:visit.start, end:visit.end,
-            test:store('testMode') ? 1 : 0 },
+            test:store('testMode') ? 1 : 0, replaced_of:visit.cell.replaced_of || '', replaced_reason:visit.cell.replaced_reason || '' },
     observations:visit.observations.map(function (o) {
       return { obs_id:o.obs_id, t:o.t, lat:o.lat, lon:o.lon, acc:o.acc, count:o.count,
                taxon_level:o.taxon_level, taxon_name:o.taxon_name, label:o.label, photos:o.photos };
