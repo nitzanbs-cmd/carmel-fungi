@@ -98,7 +98,8 @@
     <h2>כניסה</h2>
     <p>מקלידים מייל. משתתפים חדשים נכנסים אחרי אישור של צוות המחקר.</p>
     <input type="email" id="loginEmail" placeholder="המייל שלך" autocomplete="email" inputmode="email">
-    <button id="btnRequest">שליחה</button>
+    <button id="btnRequest">כניסה / הצטרפות לקהילה</button>
+    <button class="second" id="btnRequestExpert">🧪 הצטרפות כמומחה/ית</button>
     <div id="loginPending" class="card hidden" style="margin-top:14px">
       הבקשה נשלחה. כשהיא תאושר יגיע אליך מייל עם קוד כניסה.
     </div>
@@ -135,12 +136,19 @@
 <section id="sHome" class="screen hidden">
   <header>
     <h1>התאים שלי</h1>
+    <span id="areaTabs" class="hidden" style="display:flex;gap:4px">
+      <button class="small" id="tabExpert">🧪 מומחים</button><button class="small second" id="tabCommunity">🍄 קהילה</button>
+    </span>
     <button id="btnDraft" class="hidden">טיוטה</button>
     <button id="btnOutbox" class="hidden">ממתינים לשליחה <span class="badge" id="outboxCount">0</span></button>
     <button id="btnMenu">☰</button>
   </header>
   <div id="menu" class="card hidden" style="position:absolute;top:52px;left:8px;z-index:2000;width:200px">
     <button class="second small" style="width:100%;margin:4px 0" id="mHistory">ההיסטוריה שלי</button>
+    <button class="second small hidden" style="width:100%;margin:4px 0" id="mMaps">🗺 טעינת מפות למכשיר</button>
+    <button class="second small hidden" style="width:100%;margin:4px 0" id="mHeatLock"></button>
+    <button class="second small hidden" style="width:100%;margin:4px 0" id="mTestMode"></button>
+    <input type="file" id="mapFile" accept=".zip,.json" class="hidden">
     <button class="second small hidden" style="width:100%;margin:4px 0" id="mGuide">איך מצלמים פטרייה</button>
     <button class="second small hidden" style="width:100%;margin:4px 0" id="mAdmin">לוח בקרה</button>
     <a class="hidden" id="mDash" href="dashboard.html" target="_blank"><button class="second small" style="width:100%;margin:4px 0">דשבורד המחקר (מחשב)</button></a>
@@ -298,7 +306,11 @@ function recaptchaToken() {
 }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 function fmt(s) { s = Math.max(0, Math.ceil(s)); return Math.floor(s / 60) + ':' + ('0' + s % 60).slice(-2); }
-function store(k, v) { try { if (v === undefined) return JSON.parse(localStorage.getItem(k)); localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; } }
+// two areas: experts and community. Each keeps its own cells on the phone ('kit' / 'visitedIds' get a suffix)
+var AREA = (function () { try { return JSON.parse(localStorage.getItem('area')) || 'community'; } catch (e) { return 'community'; } })();
+function inExpertArea() { return AREA === 'expert' && isExpert(); }
+var AREA_KEYS = { kit:1, visitedIds:1 };
+function store(k, v) { if (AREA_KEYS[k] && inExpertArea()) k += '_expert'; try { if (v === undefined) return JSON.parse(localStorage.getItem(k)); localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; } }
 function forget(k) { try { localStorage.removeItem(k); } catch (e) {} }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]; }); }
 var ERRORS = { wrong_code:'הקוד שגוי', code_expired:'עדיין לא נשלח קוד. לחצו שליחה', too_many_tries:'יותר מדי ניסיונות. לחצו על שליחת הקוד שוב',
@@ -360,13 +372,13 @@ function sendPackage(pkg) {
     var c = Object.assign({}, o); delete c.photos; return c;
   });
   var p = pkg.sentVisit ? Promise.resolve()
-        : api('uploadVisit', { visit:pkg.visit, observations:obs, track:pkg.track })
+        : api('uploadVisit', { visit:pkg.visit, observations:obs, track:pkg.track, scope:pkg.scope || '' })
             .then(function () { pkg.sentVisit = true; return outboxPut(pkg); });
   pkg.observations.forEach(function (o) {
     Object.keys(o.photos || {}).forEach(function (kind) {
       p = p.then(function () {
         if (!o.photos[kind]) return;
-        return api('uploadPhoto', { obs_id:o.obs_id, kind:kind, data:o.photos[kind].split(',')[1] })
+        return api('uploadPhoto', { obs_id:o.obs_id, kind:kind, data:o.photos[kind].split(',')[1], scope:pkg.scope || '' })
           .then(function () { o.photos[kind] = null; return outboxPut(pkg); });
       });
     });
@@ -404,11 +416,83 @@ function startGps() {
 
 // ================= maps =================
 var homeMap, searchMap, histMap, adminMap;
+// ---- expert maps loaded INTO the device from files (never from the web): orthophoto tiles (zip) + model heat map (json) ----
+var mapsDb = null;
+function openMapsDb() {
+  if (mapsDb) return Promise.resolve(mapsDb);
+  return new Promise(function (ok, no) {
+    var r = indexedDB.open('fungis_maps', 1);
+    r.onupgradeneeded = function () { r.result.createObjectStore('tiles'); r.result.createObjectStore('meta'); };
+    r.onsuccess = function () { mapsDb = r.result; ok(mapsDb); }; r.onerror = function () { no(r.error); };
+  });
+}
+function mapsGet(store, key) {
+  return openMapsDb().then(function (db) { return new Promise(function (ok) {
+    var q = db.transaction(store).objectStore(store).get(key); q.onsuccess = function () { ok(q.result); }; q.onerror = function () { ok(null); };
+  }); }).catch(function () { return null; });
+}
+function mapsPutMany(store, pairs) {
+  return openMapsDb().then(function (db) { return new Promise(function (ok, no) {
+    var t = db.transaction(store, 'readwrite'), s = t.objectStore(store);
+    pairs.forEach(function (p) { s.put(p[1], p[0]); }); t.oncomplete = ok; t.onerror = function () { no(t.error); };
+  }); });
+}
+var OrthoLayer = L.GridLayer.extend({ createTile:function (c, done) {
+  var img = document.createElement('img'); img.alt = '';
+  mapsGet('tiles', c.z + '/' + c.x + '/' + c.y).then(function (b) {
+    if (b) { img.onload = function () { URL.revokeObjectURL(img.src); done(null, img); }; img.src = URL.createObjectURL(b); }
+    else done(null, img);
+  });
+  return img;
+} });
+var heatInfo = null;   // the loaded heat map (Nitzan only)
+function heatAllowed() { return session && session.admin && !store('heatLocked'); }
+function loadMapFile(file) {
+  if (/\.json$/i.test(file.name)) {
+    var rd = new FileReader();
+    rd.onload = function () {
+      try { var h = JSON.parse(rd.result); if (h.kind !== 'heat') throw 0;
+        mapsPutMany('meta', [['heat', h]]).then(function () { heatInfo = h; toast('מפת החום נשמרה במכשיר. היא מופיעה רק אצלך', 6000); }); }
+      catch (e) { toast('הקובץ לא מתאים'); }
+    };
+    rd.readAsText(file); return;
+  }
+  toast('פותח את קובץ האורתופוטו...', 60000);
+  (window.JSZip ? Promise.resolve() : new Promise(function (ok, no) {
+    var s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+    s.onload = ok; s.onerror = no; document.head.appendChild(s);
+  })).then(function () { return JSZip.loadAsync(file); }).then(function (zip) {
+    var names = Object.keys(zip.files).filter(function (n) { return /^\d+\/\d+\/\d+\.jpg$/.test(n); }), i = 0, total = names.length;
+    function batch() {
+      var part = names.slice(i, i + 200); i += 200;
+      if (!part.length) { mapsPutMany('meta', [['ortho', { tiles: total, at: Date.now() }]]); toast('האורתופוטו נשמר במכשיר (' + total + ' אריחים). סגרי ופתחי את האפליקציה', 8000); return; }
+      return Promise.all(part.map(function (n) { return zip.files[n].async('blob').then(function (b) { return [n.replace('.jpg', ''), new Blob([b], { type:'image/jpeg' })]; }); }))
+        .then(function (pairs) { return mapsPutMany('tiles', pairs); })
+        .then(function () { toast('שומר אורתופוטו... ' + Math.round(100 * Math.min(i, total) / total) + '%', 60000); return batch(); });
+    }
+    return batch();
+  }).catch(function () { toast('לא הצלחתי לפתוח את הקובץ', 6000); });
+}
 function makeMap(id) {
   var m = L.map(id, { zoomControl:false }).setView([32.66, 34.97], 13);
   m.attributionControl.setPrefix(false);
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
               { maxZoom:20, maxNativeZoom:19, attribution:'Esri, Maxar' }).addTo(m);
+  mapsGet('meta', 'ortho').then(function (o) {   // the 50 cm orthophoto on top of the web imagery, where it exists
+    if (o) new OrthoLayer({ minZoom:14, maxZoom:20, minNativeZoom:14, maxNativeZoom:18, attribution:'אורתופוטו' }).addTo(m);
+  });
+  mapsGet('meta', 'heat').then(function (h) {   // the model heat map: Nitzan only, switched on/off, locked on expert days
+    if (!h) return; heatInfo = h;
+    var ov = L.imageOverlay(h.png, h.bounds, { opacity:0.55, interactive:false });
+    var Btn = L.Control.extend({ options:{ position:'topright' }, onAdd:function () {
+      var b = L.DomUtil.create('button', 'locate'); b.innerHTML = '🔥'; b.title = 'מפת החום של המודל';
+      L.DomEvent.disableClickPropagation(b);
+      b.onclick = function () { if (!heatAllowed()) { b.style.display = 'none'; m.removeLayer(ov); return; }
+        if (m.hasLayer(ov)) m.removeLayer(ov); else ov.addTo(m); };
+      b.style.display = heatAllowed() ? '' : 'none'; m._heatBtn = b; return b;
+    } });
+    new Btn().addTo(m); m._heatOv = ov;
+  });
   // a filling mushroom in the corner while map tiles load
   var ld = L.DomUtil.create('div', '', m.getContainer());
   ld.style.cssText = 'position:absolute;top:8px;left:8px;z-index:1000;background:rgba(255,255,255,.85);border-radius:50%;padding:4px;display:none;pointer-events:none';
@@ -584,11 +668,13 @@ function startLogin() {
   var pend = store('pendingEmail');
   if (pend) { $('loginEmail').value = pend; $('loginCodeBox').classList.remove('hidden'); }
 }
+$('btnRequestExpert').onclick = function () { joinAs = 'expert'; $('btnRequest').onclick(); };
+var joinAs = '';
 $('btnRequest').onclick = function () {
-  var email = $('loginEmail').value.trim().toLowerCase();
+  var email = $('loginEmail').value.trim().toLowerCase(), as = joinAs; joinAs = '';
   if (!/^\S+@\S+\.\S+$/.test(email)) { $('loginMsg').textContent = 'המייל לא תקין'; return; }
   $('btnRequest').disabled = true; $('loginMsg').textContent = '';
-  recaptchaToken().then(function (tok) { return api('requestJoin', { email:email, recaptcha:tok }); }).then(function (r) {
+  recaptchaToken().then(function (tok) { return api('requestJoin', { email:email, recaptcha:tok, as:as }); }).then(function (r) {
     store('pendingEmail', email);
     $('loginPending').classList.toggle('hidden', r.state !== 'pending');
     $('loginCodeBox').classList.remove('hidden');
@@ -630,21 +716,36 @@ var visitedIds = store('visitedIds') || {};   // cells reported from this phone 
 
 var choosing = false;   // the choice screen is shown instead of the kit
 function hasOpenKit() { return !!(kit.cells && kit.cells.some(function (c) { return !(visitedIds[c.id] || c.done); })); }
+function setArea(a) {
+  AREA = a; try { localStorage.setItem('area', JSON.stringify(a)); } catch (e) {}
+  loadAreaKit(); goHome(!hasOpenKit());
+}
+var kitArea = null;
+function loadAreaKit() {   // the cells of the area now open (experts / community)
+  var ka = inExpertArea() ? 'expert' : 'community';
+  if (kitArea === ka) return;
+  kitArea = ka; kit = store('kit') || { cells:[] }; visitedIds = store('visitedIds') || {};
+}
+$('tabExpert').onclick = function () { setArea('expert'); };
+$('tabCommunity').onclick = function () { setArea('community'); };
 function goHome(withChoice) {
+  loadAreaKit();
   choosing = !!withChoice;
   show('sHome');
+  $('areaTabs').classList.toggle('hidden', !isExpert());
+  $('areaTabs').style.display = isExpert() ? 'flex' : 'none';
+  $('tabExpert').classList.toggle('second', !inExpertArea()); $('tabCommunity').classList.toggle('second', inExpertArea());
   var dr = store('draft'); $('btnDraft').classList.toggle('hidden', !(dr && dr.parked));
   $('mAdmin').classList.toggle('hidden', !session.admin); $('mDash').classList.toggle('hidden', !session.admin);
   $('mTestKit').classList.remove('hidden');
   if (!homeMap) { homeMap = makeMap('homeMap'); drawAreas(homeMap); }
   refreshOutbox(); drawKit();
-  if (!kit.expert_day) loadKit();   // an expert field day lives on the phone; the server kit must not replace it
+  if (!inExpertArea() && !kit.expert_day) loadKit();   // an expert field day lives on the phone; the server kit must not replace it
 }
 // ---- expert field day: the blind list code 3 handed out; nothing is drawn here ----
 function prepExpertDay() {
   toast('מוריד את יום השטח...', 20000);
   api('expertDay').then(function (r) {
-    if (kit.expert_day !== r.day) { visitedIds = {}; store('visitedIds', visitedIds); }
     kit = { expert_day: r.day, cells: r.cells }; store('kit', kit);
     choosing = false; drawKit();
     var b = [90, 180, -90, -180];
@@ -1197,8 +1298,9 @@ $('btnDraft').onclick = function () {
 };
 function packVisit(auto) {
   var pkg = {
-    auto:auto,
-    visit:{ visit_id:visit.visit_id, cell_id:visit.cell.id, quality:visit.quality, start:visit.start, end:visit.end },
+    auto:auto, scope:inExpertArea() ? 'expert' : '',   // fixed when recorded: decides the experts' or the community's sheet
+    visit:{ visit_id:visit.visit_id, cell_id:visit.cell.id, quality:visit.quality, start:visit.start, end:visit.end,
+            test:store('testMode') ? 1 : 0 },
     observations:visit.observations.map(function (o) {
       return { obs_id:o.obs_id, t:o.t, lat:o.lat, lon:o.lon, acc:o.acc, count:o.count,
                taxon_level:o.taxon_level, taxon_name:o.taxon_name, label:o.label, photos:o.photos };
@@ -1269,14 +1371,42 @@ function openHistory() {
   }).catch(function (e) { $('histList').innerHTML = '<p>' + errText(e) + '</p>'; });
 }
 $('mHistory').onclick = openHistory;
+// expert tools in the menu: maps from files, heat-map lock (Nitzan), test mode (visits marked test, kept out of the results)
+function refreshExpertMenu() {
+  $('mMaps').classList.toggle('hidden', !isExpert());
+  $('mHeatLock').classList.toggle('hidden', !(session && session.admin));
+  $('mTestMode').classList.toggle('hidden', !(session && session.admin));
+  $('mHeatLock').textContent = store('heatLocked') ? '🔓 לפתוח את מפת החום' : '🔒 לנעול את מפת החום (יום עם מומחים)';
+  $('mTestMode').textContent = store('testMode') ? '🧪 מצב בדיקה: פועל (לכבות)' : '🧪 מצב בדיקה: כבוי (להפעיל)';
+  [homeMap, searchMap].forEach(function (m) {
+    if (!m || !m._heatBtn) return;
+    m._heatBtn.style.display = heatAllowed() ? '' : 'none';
+    if (!heatAllowed() && m.hasLayer(m._heatOv)) m.removeLayer(m._heatOv);
+  });
+}
+$('mMaps').onclick = function () { $('menu').classList.add('hidden'); $('mapFile').click(); };
+$('mapFile').onchange = function () { var f = this.files[0]; this.value = ''; if (f) loadMapFile(f); };
+$('mHeatLock').onclick = function () { store('heatLocked', !store('heatLocked')); refreshExpertMenu(); };
+$('mTestMode').onclick = function () { store('testMode', !store('testMode')); refreshExpertMenu();
+  toast(store('testMode') ? 'מצב בדיקה: כל ביקור יסומן "בדיקה" ולא ייכנס לתוצאות' : 'מצב בדיקה כבוי', 6000); };
+$('btnMenu').addEventListener('click', refreshExpertMenu);
 // ================= choice of kit: Carmel research, or try your luck near you =================
 var NEAR_KM = 0.5;   // close by: a few minutes' walk to each cell
 function showChoice() {
   kitLayers.forEach(function (l) { homeMap.removeLayer(l); }); kitLayers = [];
   var open = kit.cells && kit.cells.some(function (c) { return !(visitedIds[c.id] || c.done); });
+  if (inExpertArea()) {   // experts: Hof HaCarmel field days only
+    $('homeSheet').innerHTML = '<h2 style="margin-bottom:6px">מומחים · יער חוף הכרמל</h2>' +
+      (open ? '<button id="btnChoiceBack">המשך ליום השטח</button>' : '') +
+      '<div class="card"><b>🧪 יום שטח</b><p class="muted" style="margin:4px 0 0">התאים שקוד 3 הגריל. עושים יום לפני, בוויפיי: הרשימה והמפה נשמרות בטלפון</p>' +
+      '<button id="btnExpertDay">הכנה ליום שטח</button></div>';
+    $('btnExpertDay').onclick = prepExpertDay;
+    if ($('btnChoiceBack')) $('btnChoiceBack').onclick = function () { choosing = false; drawKit(); };
+    return;
+  }
   $('homeSheet').innerHTML =
     '<h2 style="margin-bottom:6px">איפה מחפשים היום?</h2>' +
-    (isExpert() ? '<div class="card"><b>🧪 יום שטח – מומחים</b><p class="muted" style="margin:4px 0 0">התאים שקוד 3 הגריל. עושים יום לפני, בוויפיי: הרשימה והמפה נשמרות בטלפון</p>' +
+    (false ? '<div class="card"><b>🧪 יום שטח – מומחים</b><p class="muted" style="margin:4px 0 0">התאים שקוד 3 הגריל. עושים יום לפני, בוויפיי: הרשימה והמפה נשמרות בטלפון</p>' +
       '<button id="btnExpertDay">הכנה ליום שטח</button></div>' : '') +
     (open ? '<div class="card"><b>המשך ניטור קיים</b><p class="muted" style="margin:4px 0 0">יש לך תאים פתוחים שעוד לא דווחו</p>' +
             '<button id="btnChoiceBack">המשך לתאים הפתוחים</button></div>' : '') +
