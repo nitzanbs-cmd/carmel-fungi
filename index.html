@@ -396,7 +396,7 @@ function sendOutbox(onlyAuto) {
     return chain.then(function () { if (n) toast(n === 1 ? 'הביקור נשלח' : n + ' ביקורים נשלחו'); });
   }).catch(function (e) {
     if (!onlyAuto) toast(errText(e) + '. ננסה שוב כשתהיה קליטה');
-  }).then(function () { sending = false; refreshOutbox(); if (!$('sHome').classList.contains('hidden')) loadKit(); });
+  }).then(function () { sending = false; refreshOutbox(); if (!$('sHome').classList.contains('hidden') && !inExpertArea() && !kit.expert_day) loadKit(); });   // never replace the expert day on the phone
 }
 window.addEventListener('online', function () { sendOutbox(true); });
 setInterval(function () { if (navigator.onLine) sendOutbox(true); }, 60000);
