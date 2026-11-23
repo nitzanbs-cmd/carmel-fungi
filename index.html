@@ -712,6 +712,8 @@ $('btnConsent').onclick = function () {
 };
 function afterLogin() {
   if (!session.consent) { show('sConsent'); return; }
+  if (COMMUNITY_FROZEN && isExpert()) AREA = 'expert';   // reopen on the expert day already on the phone
+  loadAreaKit();
   startGps(); goHome(!hasOpenKit());   // the choice only when there is no open kit (coming back from navigation keeps the kit)
   api('me').then(function (r) { session.access = r.access; session.admin = r.admin; session.role = r.role; store('session', session);
     $('mAdmin').classList.toggle('hidden', !r.admin); }).catch(function () {});
