@@ -764,7 +764,7 @@ function goHome(withChoice) {
 function prepExpertDay() {
   toast('מוריד את יום השטח...', 20000);
   api('expertDay').then(function (r) {
-    kit = { expert_day: r.day, cells: r.cells }; store('kit', kit);
+    kit = { expert_day: r.day, cells: r.cells }; store('kit', kit); saveExpertKit();
     choosing = false; drawKit();
     var b = [90, 180, -90, -180];
     r.cells.forEach(function (c) { b = [Math.min(b[0], c.center[0]), Math.min(b[1], c.center[1]), Math.max(b[2], c.center[0]), Math.max(b[3], c.center[1])]; });
@@ -776,7 +776,12 @@ function loadKit() {
   return api('kit').then(function (r) { kit = r; store('kit', r); drawKit(); })
     .catch(function () { /* offline: keep the kit stored on the phone */ });
 }
+function saveExpertKit() { try { localStorage.setItem('expertDayKit', JSON.stringify(kit)); } catch (e) {} }
 function drawKit() {
+  if (inExpertArea() && !kit.expert_day) {   // the expert day has its own copy on the device: it always comes back
+    try { var ek = JSON.parse(localStorage.getItem('expertDayKit')); if (ek && ek.expert_day) { kit = ek; choosing = false; } } catch (e) {}
+  }
+  if (choosing && kit.expert_day) choosing = false;
   if (choosing) { showChoice(); return; }
   kitLayers.forEach(function (l) { homeMap.removeLayer(l); }); kitLayers = [];
   var sheet = $('homeSheet'), html = '';
@@ -834,7 +839,7 @@ function drawKit() {
   else if ($('btnOtherKit')) $('btnOtherKit').onclick = function () { choosing = true; showChoice(); };
   sheet.querySelectorAll('[data-go]').forEach(function (b) { b.onclick = function () { var k = Number(b.dataset.go); arrive(cells[k], kit.expert_day ? cells[k].id : k + 1); }; });
   sheet.querySelectorAll('[data-grp]').forEach(function (b) { b.onclick = function () { store('dayGroup', b.dataset.grp); repFor = null; drawKit(); }; });
-  function useBackup(k, why) { kit.cells[k].use_backup = why; repFor = null; store('kit', kit); drawKit(); }
+  function useBackup(k, why) { kit.cells[k].use_backup = why; repFor = null; store('kit', kit); saveExpertKit(); drawKit(); }
   sheet.querySelectorAll('[data-xs]').forEach(function (b) { b.onclick = function () { useBackup(Number(b.dataset.xs), 'slope'); toast('עוברים ליחידת הגיבוי ' + kit.cells[b.dataset.xs].backup.id, 5000); }; });
   sheet.querySelectorAll('[data-xv]').forEach(function (b) { b.onclick = function () { useBackup(Number(b.dataset.xv), 'vegetation'); toast('עוברים ליחידת הגיבוי ' + kit.cells[b.dataset.xv].backup.id, 5000); }; });
   sheet.querySelectorAll('[data-xu]').forEach(function (b) { b.onclick = function () { useBackup(Number(b.dataset.xu), null); }; });
