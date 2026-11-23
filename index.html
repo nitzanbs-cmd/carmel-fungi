@@ -970,6 +970,9 @@ function replaceCell(id, reason) {
   }).catch(function (e) { drawKit(); toast(errText(e)); });
 }
 $('btnMenu').onclick = function () { $('menu').classList.toggle('hidden'); };
+document.addEventListener('click', function (e) {   // a tap anywhere outside the menu closes it
+  if (!$('menu').contains(e.target) && !$('btnMenu').contains(e.target)) $('menu').classList.add('hidden');
+}, true);
 $('btnOutbox').onclick = function () {
   if (confirm('לשלוח עכשיו את כל מה שממתין?')) { toast('שולח...'); sendOutbox(false); }
 };
