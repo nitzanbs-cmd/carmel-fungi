@@ -485,6 +485,11 @@ function makeMap(id) {
   mapsGet('meta', 'heat').then(function (h) { if (h) addHeat(m, h); });
   return finishMap(m);
 }
+function fetchHeat() {   // admin only: the heat map comes from the server once and is kept on the device
+  return api('heatMap').then(function (r) {
+    return mapsPutMany('meta', [['heat', r.heat]]).then(function () { if (homeMap) addHeat(homeMap, r.heat); });
+  }).catch(function () {});
+}
 function addHeat(m, h) {   // the model heat map: Nitzan only, switched on/off, locked on expert days
     if (m._heatOv) return; heatInfo = h;
     var ov = L.imageOverlay(h.png, h.bounds, { opacity:0.55, interactive:false });
@@ -716,7 +721,8 @@ function afterLogin() {
   loadAreaKit();
   startGps(); goHome(!hasOpenKit());   // the choice only when there is no open kit (coming back from navigation keeps the kit)
   api('me').then(function (r) { session.access = r.access; session.admin = r.admin; session.role = r.role; store('session', session);
-    $('mAdmin').classList.toggle('hidden', !r.admin); }).catch(function () {});
+    $('mAdmin').classList.toggle('hidden', !r.admin);
+    if (r.admin) fetchHeat(); }).catch(function () {});
 }
 
 // ================= 3. home =================
