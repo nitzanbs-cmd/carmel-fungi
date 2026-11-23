@@ -783,8 +783,18 @@ function drawKit() {
     return { id:c.backup.id, center:c.backup.center, corners:c.backup.corners, walk:c.walk, spare:c.spare,
              replaced_of:c.id, replaced_reason:c.use_backup };
   });
+  var grp = store('dayGroup') || 'main';   // expert day: one group at a time on the map and in the list
+  function grpOf(c) { return c.optional ? 'plots' : c.spare ? 'spare' : 'main'; }
+  if (kit.expert_day) {
+    var cnt = function (g) { var a = kit.cells.filter(function (c) { return grpOf(c) === g; }); return a.filter(function (c, k) { return visitedIds[cells[kit.cells.indexOf(c)].id]; }).length + '/' + a.length; };
+    html += '<div style="display:flex;gap:4px;margin-bottom:8px">' +
+      [['main', 'יחידות היום'], ['spare', 'רזרבה'], ['plots', 'חלקות']].map(function (g) {
+        return '<button class="small' + (grp === g[0] ? '' : ' second') + '" style="flex:1" data-grp="' + g[0] + '">' + g[1] + ' ' + cnt(g[0]) + '</button>';
+      }).join('') + '</div>';
+  }
   cells.forEach(function (c, i) {
     var orig = kit.cells[i];
+    if (kit.expert_day && grpOf(orig) !== grp) return;
     var done = visitedIds[c.id] || c.done;
     var poly = cellPolygon(c, { color: done ? '#d0d0d0' : '#ffd54f', weight:3, fillOpacity:.15 }).addTo(homeMap);
     var name = kit.expert_day ? c.id : String(i + 1);
@@ -817,6 +827,7 @@ function drawKit() {
   if (allDone) $('btnDraw').onclick = function () { choosing = true; showChoice(); };
   else $('btnOtherKit').onclick = function () { choosing = true; showChoice(); };
   sheet.querySelectorAll('[data-go]').forEach(function (b) { b.onclick = function () { var k = Number(b.dataset.go); arrive(cells[k], kit.expert_day ? cells[k].id : k + 1); }; });
+  sheet.querySelectorAll('[data-grp]').forEach(function (b) { b.onclick = function () { store('dayGroup', b.dataset.grp); repFor = null; drawKit(); }; });
   function useBackup(k, why) { kit.cells[k].use_backup = why; repFor = null; store('kit', kit); drawKit(); }
   sheet.querySelectorAll('[data-xs]').forEach(function (b) { b.onclick = function () { useBackup(Number(b.dataset.xs), 'slope'); toast('עוברים ליחידת הגיבוי ' + kit.cells[b.dataset.xs].backup.id, 5000); }; });
   sheet.querySelectorAll('[data-xv]').forEach(function (b) { b.onclick = function () { useBackup(Number(b.dataset.xv), 'vegetation'); toast('עוברים ליחידת הגיבוי ' + kit.cells[b.dataset.xv].backup.id, 5000); }; });
