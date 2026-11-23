@@ -728,12 +728,15 @@ function loadAreaKit() {   // the cells of the area now open (experts / communit
 }
 $('tabExpert').onclick = function () { setArea('expert'); };
 $('tabCommunity').onclick = function () { setArea('community'); };
+var COMMUNITY_FROZEN = true;   // 23.11: her request - experts see only the expert area; set false to bring the tabs back
 function goHome(withChoice) {
+  if (COMMUNITY_FROZEN && isExpert()) AREA = 'expert';
   loadAreaKit();
   choosing = !!withChoice;
   show('sHome');
-  $('areaTabs').classList.toggle('hidden', !isExpert());
-  $('areaTabs').style.display = isExpert() ? 'flex' : 'none';
+  var tabs = isExpert() && !COMMUNITY_FROZEN;
+  $('areaTabs').classList.toggle('hidden', !tabs);
+  $('areaTabs').style.display = tabs ? 'flex' : 'none';
   $('tabExpert').classList.toggle('second', !inExpertArea()); $('tabCommunity').classList.toggle('second', inExpertArea());
   var dr = store('draft'); $('btnDraft').classList.toggle('hidden', !(dr && dr.parked));
   $('mAdmin').classList.toggle('hidden', !session.admin); $('mDash').classList.toggle('hidden', !session.admin);
