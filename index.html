@@ -452,7 +452,7 @@ function loadMapFile(file) {
     var rd = new FileReader();
     rd.onload = function () {
       try { var h = JSON.parse(rd.result); if (h.kind !== 'heat') throw 0;
-        mapsPutMany('meta', [['heat', h]]).then(function () { heatInfo = h; toast('מפת החום נשמרה במכשיר. היא מופיעה רק אצלך', 6000); }); }
+        mapsPutMany('meta', [['heat', h]]).then(function () { heatInfo = h; if (homeMap) addHeat(homeMap, h); toast('מפת החום נשמרה במכשיר והיא מוצגת. 🔥 מדליק ומכבה. רק אצלך', 6000); }); }
       catch (e) { toast('הקובץ לא מתאים'); }
     };
     rd.readAsText(file); return;
@@ -481,8 +481,11 @@ function makeMap(id) {
   mapsGet('meta', 'ortho').then(function (o) {   // the 50 cm orthophoto on top of the web imagery, where it exists
     if (o) new OrthoLayer({ minZoom:14, maxZoom:20, minNativeZoom:14, maxNativeZoom:18, attribution:'אורתופוטו' }).addTo(m);
   });
-  mapsGet('meta', 'heat').then(function (h) {   // the model heat map: Nitzan only, switched on/off, locked on expert days
-    if (!h) return; heatInfo = h;
+  mapsGet('meta', 'heat').then(function (h) { if (h) addHeat(m, h); });
+  return finishMap(m);
+}
+function addHeat(m, h) {   // the model heat map: Nitzan only, switched on/off, locked on expert days
+    if (m._heatOv) return; heatInfo = h;
     var ov = L.imageOverlay(h.png, h.bounds, { opacity:0.55, interactive:false });
     var Btn = L.Control.extend({ options:{ position:'topright' }, onAdd:function () {
       var b = L.DomUtil.create('button', 'locate'); b.innerHTML = '🔥'; b.title = 'מפת החום של המודל';
@@ -492,7 +495,9 @@ function makeMap(id) {
       b.style.display = heatAllowed() ? '' : 'none'; m._heatBtn = b; return b;
     } });
     new Btn().addTo(m); m._heatOv = ov;
-  });
+    if (heatAllowed()) ov.addTo(m);
+}
+function finishMap(m) {
   // a filling mushroom in the corner while map tiles load
   var ld = L.DomUtil.create('div', '', m.getContainer());
   ld.style.cssText = 'position:absolute;top:8px;left:8px;z-index:1000;background:rgba(255,255,255,.85);border-radius:50%;padding:4px;display:none;pointer-events:none';
@@ -651,6 +656,7 @@ function drawAreas(m) {
   loadAreas().then(function (a) {
     if (!a || m._areasDrawn) return; m._areasDrawn = true;
     a.forEach(function (x) {
+      if (COMMUNITY_FROZEN && isExpert() && x.n !== 'חוף הכרמל') return;   // monitoring days: only the Hof HaCarmel forest
       var p = L.polygon(x.r, x.k === 'kkl'
         ? { renderer:areaCanvas(), color:'#7CFC00', weight:1.5, fillOpacity:0.04 }
         : { renderer:areaCanvas(), color:'#ff9800', weight:2, fillColor:'#ff9800', fillOpacity:isExpert() ? 0.05 : 0.18, dashArray:'6 4' });
