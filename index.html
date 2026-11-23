@@ -828,10 +828,10 @@ function drawKit() {
   });
   var allDone = cells.every(function (c) { return visitedIds[c.id] || c.done; });
   if (allDone) html += '<p style="margin-top:10px">סיימת את כל התאים. תודה!</p><button id="btnDraw">ערכה חדשה</button>';
-  else html += '<button class="second small" id="btnOtherKit" style="margin-top:10px">איפה מחפשים היום?</button>';
+  else if (!(kit.expert_day && COMMUNITY_FROZEN)) html += '<button class="second small" id="btnOtherKit" style="margin-top:10px">איפה מחפשים היום?</button>';
   sheet.innerHTML = html;
   if (allDone) $('btnDraw').onclick = function () { choosing = true; showChoice(); };
-  else $('btnOtherKit').onclick = function () { choosing = true; showChoice(); };
+  else if ($('btnOtherKit')) $('btnOtherKit').onclick = function () { choosing = true; showChoice(); };
   sheet.querySelectorAll('[data-go]').forEach(function (b) { b.onclick = function () { var k = Number(b.dataset.go); arrive(cells[k], kit.expert_day ? cells[k].id : k + 1); }; });
   sheet.querySelectorAll('[data-grp]').forEach(function (b) { b.onclick = function () { store('dayGroup', b.dataset.grp); repFor = null; drawKit(); }; });
   function useBackup(k, why) { kit.cells[k].use_backup = why; repFor = null; store('kit', kit); drawKit(); }
@@ -1426,6 +1426,10 @@ function refreshExpertMenu() {
   $('mHeatLock').classList.toggle('hidden', !(session && session.admin));
   $('mTestMode').classList.toggle('hidden', !(session && session.admin));
   $('mHeatLock').textContent = store('heatLocked') ? '🔓 לפתוח את מפת החום' : '🔒 לנעול את מפת החום (יום עם מומחים)';
+  if (COMMUNITY_FROZEN && isExpert()) {   // field test: only what is needed in the field (her request 23.11)
+    ['mHistory', 'mMaps', 'mHeatLock', 'mAdmin', 'mDash', 'mTestKit'].forEach(function (id) { $(id).classList.add('hidden'); });
+    if (store('heatLocked')) store('heatLocked', false);
+  }
   $('mTestMode').textContent = store('testMode') ? '🧪 מצב בדיקה: פועל (לכבות)' : '🧪 מצב בדיקה: כבוי (להפעיל)';
   [homeMap, searchMap].forEach(function (m) {
     if (!m || !m._heatBtn) return;
@@ -1524,7 +1528,7 @@ function nearKitOnline() {
   }).catch(function (e) { toast(errText(e)); });
 }
 $('mTestKit').onclick = function () { $('menu').classList.add('hidden'); choosing = true; showChoice(); };
-document.querySelectorAll('.back').forEach(function (b) { b.onclick = goHome; });
+document.querySelectorAll('.back').forEach(function (b) { b.onclick = function () { goHome(); }; });   // not goHome(event): that opened the choice screen
 
 // ================= 9. admin =================
 var adminLayers = [], adminData = null;
