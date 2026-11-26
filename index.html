@@ -305,6 +305,11 @@ function recaptchaToken() {
     s.onload = run; s.onerror = function () { ok(''); }; document.head.appendChild(s);
   });
 }
+function locBlockedMsg() {   // where to allow location, by device
+  return /iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent) && 'ontouchend' in document
+    ? 'המיקום חסום. באייפד/אייפון: הגדרות ← פרטיות ואבטחה ← שירותי מיקום ← אתרים ב-Safari ← בזמן השימוש. ואז לסגור ולפתוח את האפליקציה'
+    : 'המיקום חסום. בכרום: ⋮ ← הגדרות ← הגדרות אתרים ← מיקום ← לאפשר לאתר הזה';
+}
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 function fmt(s) { s = Math.max(0, Math.ceil(s)); return Math.floor(s / 60) + ':' + ('0' + s % 60).slice(-2); }
 // two areas: experts and community. Each keeps its own cells on the phone ('kit' / 'visitedIds' get a suffix)
@@ -411,7 +416,7 @@ function startGps() {
     fixListeners.forEach(function (f) { f(lastFix); });
   }, function (e) {
     if (e.code === 1) { navigator.geolocation.clearWatch(gpsWatch); gpsWatch = null;
-      toast('המיקום חסום. בכרום: ⋮ ← הגדרות ← הגדרות אתרים ← מיקום ← לאפשר לאתר הזה', 8000); }
+      toast(locBlockedMsg(), 8000); }
   }, { enableHighAccuracy:true, maximumAge:0, timeout:20000 });
 }
 
@@ -553,7 +558,7 @@ function finishMap(m) {
         fixListeners.forEach(function (f) { f(lastFix); });
         m.setView([lastFix.lat, lastFix.lon], 17); startGps();
       }, function (e) {
-        toast(e.code === 1 ? 'המיקום חסום. בכרום: ⋮ ← הגדרות ← הגדרות אתרים ← מיקום ← לאפשר לאתר הזה'
+        toast(e.code === 1 ? locBlockedMsg()
                            : 'אין קליטת GPS כרגע. כדאי לצאת לשטח פתוח ולנסות שוב', 8000);
       }, { enableHighAccuracy:true, timeout:20000, maximumAge:0 });
     };
